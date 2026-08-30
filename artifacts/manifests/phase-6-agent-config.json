@@ -1,0 +1,26 @@
+{
+  "base_url": "https://api.deepseek.com",
+  "config_sha256": "8c6ab5ef51680795b660e92021ed5a5a656b2ccbcd0c9b690313a06a38ddcd22",
+  "config_sha256_rule": "SHA-256 of UTF-8 canonical JSON with sorted keys and compact separators, excluding config_sha256 and config_sha256_rule",
+  "contract_sha256": "180d1e8667c4ae0f7e459dca1bee658e7be7b03eafaea48c0da12ea62d44934e",
+  "dataset_snapshot_id": "44eface81cccdceb36c3fd61f93736267e63b84ba63902fac026659540518846",
+  "max_clarifications": 1,
+  "max_model_calls": 3,
+  "max_output_tokens": 1200,
+  "model": "deepseek-v4-flash",
+  "model_version_observed": "DeepSeek-V4-Flash-0731",
+  "pricing_observed_at": "2026-08-03",
+  "pricing_source": "https://api-docs.deepseek.com/quick_start/pricing",
+  "pricing_usd_per_million_tokens": {
+    "cache_hit_input": 0.0028,
+    "cache_miss_input": 0.14,
+    "output": 0.28
+  },
+  "provider": "deepseek",
+  "request_timeout_seconds": 30,
+  "retrieval_limit_per_aspect": 5,
+  "schema_version": "phase-6-agent-config-v1",
+  "stream": false,
+  "temperature": 0,
+  "thinking": false
+}

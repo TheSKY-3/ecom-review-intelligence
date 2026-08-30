@@ -1,0 +1,58 @@
+{
+  "case_corpus_sha256": "9daeea21ad518635fa89afaed6491b16afdf340be48483ce99afa04f8c7a638b",
+  "case_count": 27,
+  "contract_sha256": "180d1e8667c4ae0f7e459dca1bee658e7be7b03eafaea48c0da12ea62d44934e",
+  "data_boundary": "Aggregate-only; no product IDs, evidence IDs, review text, or local paths.",
+  "dataset_snapshot_id": "44eface81cccdceb36c3fd61f93736267e63b84ba63902fac026659540518846",
+  "evaluated_at": "2026-08-02T16:52:36+00:00",
+  "git_revision": "17feacbd14acbddc09879814294fbf9fe9e50f4d",
+  "interpretation_limit": "Silver expected evidence is deterministically derived from the lexical baseline; this is a reproducibility and regression check, not an independent relevance or business-impact benchmark.",
+  "label_counts": {
+    "silver": 27
+  },
+  "metrics": {
+    "fts5_bm25": {
+      "case_hit_rate": 0.869565,
+      "citation_checks": 103,
+      "citation_integrity": 1.0,
+      "evidence_case_count": 23,
+      "expected_evidence_count": 107,
+      "mean_latency_ms": 35.999522,
+      "no_answer_false_positives": 0,
+      "p95_latency_ms": 49.7039,
+      "product_join_errors": 0,
+      "recall_at_k": 0.53271,
+      "recalled_evidence_count": 57,
+      "retrieved_evidence_count": 103
+    },
+    "lexical": {
+      "case_hit_rate": 1.0,
+      "citation_checks": 107,
+      "citation_integrity": 1.0,
+      "evidence_case_count": 23,
+      "expected_evidence_count": 107,
+      "mean_latency_ms": 26.646259,
+      "no_answer_false_positives": 0,
+      "p95_latency_ms": 44.2079,
+      "product_join_errors": 0,
+      "recall_at_k": 1.0,
+      "recalled_evidence_count": 107,
+      "retrieved_evidence_count": 107
+    }
+  },
+  "quality_gates": {
+    "citation_integrity": 1.0,
+    "no_answer_false_positives": 0,
+    "passed": true,
+    "product_join_errors": 0
+  },
+  "retrieval_limit": 5,
+  "state": "PASSED",
+  "store_build_revision": "17feacbd14acbddc09879814294fbf9fe9e50f4d",
+  "workflow_counts": {
+    "comparison": 8,
+    "diagnosis": 8,
+    "no_answer": 4,
+    "triage": 7
+  }
+}

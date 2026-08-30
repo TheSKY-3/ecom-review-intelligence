@@ -1,0 +1,126 @@
+\chapter{P6：把确定性工具组织成受约束 Agent}
+
+\section{承上启下}
+
+P5 的本地工具已经能找证据，但运营人员还要自己决定任务类型、确认商品、调用工具、组织答案和处理歧义。P6 的问题是：怎样让人可以用自然语言提问，同时让本地代码掌握权限、证据和最终检查？
+
+\begin{factbox}
+可以把 P6 记成一句话：\textit{model proposes, code disposes}。模型提出计划和文字，本地代码决定商品是否允许、工具是否可以执行、证据是否支持，以及结果能否放行。
+\end{factbox}
+
+\section{业务问题、输入与边界}
+
+输入是 P3 证据规则、P4 本地工具、P5 固定案例和运行配置。业务目标是支持 SKU 诊断、竞品比较和问题分流。边界是单 Agent、本地单用户和固定工具集合；它没有任意 SQL、浏览器操作、企业系统写入或生产 SLA。
+
+\section{开发过程}
+
+\subsection{1. 先跟着一个问题走一遍}
+
+以“比较两个候选商品的噪音反馈”为例：先检查输入，再理解任务，确认商品，选择工具，取回证据，做成匿名证据卡，让模型起草，最后由本地程序逐项核对并渲染结果。商品标题有多个候选时只暂停一次，让用户选择后继续。
+
+\begin{center}
+\texttt{request}
+$\rightarrow$ \texttt{validate\_input}
+$\rightarrow$ \texttt{plan\_request}
+$\rightarrow$ \texttt{resolve\_products}
+$\rightarrow$ \texttt{route\_workflow}
+$\rightarrow$ \texttt{execute\_tool}
+$\rightarrow$ \texttt{build\_safe\_evidence}
+$\rightarrow$ \texttt{draft\_answer}
+$\rightarrow$ \texttt{verify\_answer}
+$\rightarrow$ \texttt{render\_local}
+$\rightarrow$ \texttt{write\_redacted\_trace}
+\end{center}
+
+\subsection{2. 先让模型按固定表格填写}
+
+请求、计划、工具参数、证据卡、草稿、验证结果和最终响应都有固定的 Pydantic 字段。这个格式约束叫\textbf{Structured Output}，可以把它理解成“模型必须填写固定栏位的工单”。它能减少字段和类型错误，但不能证明模型填写的商品、极性或强度获得了事实授权。
+
+\subsection{3. 分清模型提议和本地执行权}
+
+模型只能提出工作流、候选商品和 aspect；本地 resolver 检查商品是否存在，router 把 diagnosis、comparison、triage 映射到唯一允许的业务工具。这就是\textbf{Tools 与 Authority}的区别：模型可以发起工具调用请求，但不拥有 Python callable、任意 SQL 或新工具名。P4 的 SQLite/FTS5 是唯一业务取证来源。
+
+\subsection{4. 只给模型看匿名的证据卡}
+
+本地结果转换为 PRODUCT/CARD 别名、体验维度、极性、强度和最小聚合摘要。原始评论、真实商品键、本地 evidence id、路径和 SQLite 位置不进入模型上下文。这样模型有足够信息组织表达，又不会接触不必要的内部数据。
+
+\subsection{5. 让 Verifier 做最终复核}
+
+模型起草后，本地 \textbf{Verifier} 像出库前的复核员，比较工作流、商品集合、aspect、claim 类型、极性、强度、卡片覆盖和顺序。期望引用、工具返回引用和最终响应引用必须三方一致，并逐个回 SQLite 检查。
+
+第一次失败且预算允许时，只修复一次；仍失败就返回确定性的 \texttt{DEGRADED\_SAFE\_RESULT}，不让模型继续猜。
+
+\subsection{6. 需要暂停恢复时再引入 LangGraph}
+
+前面的步骤明确后，才需要 \textbf{LangGraph} 管理状态和条件流转。可以把 state 想成正在处理的工单，\texttt{interrupt} 是“等用户选择”，\texttt{resume} 是“拿着原工单继续”，不是从头重跑。SQLite \texttt{checkpoint} 保存可恢复状态；恢复时 token 和用户选择必须同时出现，选择还必须属于原候选集合。
+
+\subsection{7. 把调试记录和公开记录分开}
+
+本地 \textbf{Trace} 保存调试所需的详细节点和引用信息；公开 Trace 只保留闭合字段中的流程、状态、调用次数和固定错误码。字段名安全不够，值本身也可能泄露路径或标识，所以公开序列化还要递归扫描，并采用锁和原子发布。
+
+\subsection{8. 先在不联网模式把入口跑通}
+
+CLI 默认不联网，明确检查 mode、数据身份、corpus、resume 和异常。live 必须显式选择并确认，只从进程环境读取 DeepSeek Key；关闭 SDK 自动重试，由本地预算计数每次真实 HTTP attempt，避免费用被隐藏重试放大。
+
+\subsection{9. 按 fake、replay、live 逐层增加证据}
+
+fake 用程序预设输出，适合单元测试；replay 使用冻结且审查过的交互，适合重复演示；live 才访问真实 DeepSeek。前两者通过不能证明供应商可用；live 有界通过也不能证明长期生产稳定。
+
+\subsection{10. 先做 Offline Evaluation，再做真实模型检查}
+
+\textbf{Offline Evaluation}就是“冻结的工程考卷”，覆盖三类工作流、澄清、证据不足、恶意输入、预算和公开边界。离线门通过后，才运行 DeepSeek live gate：15 个冻结案例各两次，检查工具调用、usage、字段语义、引用、状态和有限非确定性。
+
+\subsection{11. 用完成审计核对整条链}
+
+\textbf{完成审计}不是相信一段 PASS 文本，而是从运行明细重新聚合各道阻断门，重算代码身份，复核 P1--P5 lineage、公开路径和值扫描。失败时旧 PASS 必须失效，避免新旧工件混在一起。
+
+\section{本阶段学到的知识}
+
+\begin{longtable}{>{\raggedright\arraybackslash}p{0.22\textwidth}>{\raggedright\arraybackslash}p{0.34\textwidth}>{\raggedright\arraybackslash}p{0.34\textwidth}}
+\toprule
+知识 & 先这样理解 & 不能混淆的边界 \\
+\midrule
+Structured Output & 固定栏位的工单 & 格式正确不等于事实正确 \\
+Tools 与 Authority & 模型提议，本地程序执行 & function calling 不等于模型拥有权限 \\
+Verifier & 出库前的逐项复核员 & 不是只检查 JSON 合法 \\
+LangGraph & 管理工单状态和流程分支 & 使用框架不自动等于 Agent \\
+\shortstack[l]{interrupt / resume /\\ checkpoint} & 暂停、恢复和保存状态 & resume 不是重新运行 \\
+Trace & 本地详细病历与公开摘要 & 隐去字段名仍可能从值泄漏 \\
+Offline Evaluation & 冻结的工程考卷 & silver 回归不等于人工 gold \\
+Live gate & 有预算的真实供应商检查 & 30 次通过不等于生产 SLA \\
+\bottomrule
+\end{longtable}
+
+\begin{beginnerbox}
+沿完整请求回答三个问题：“模型看到了什么？”“谁拥有工具执行权？”“验证失败后谁决定最终状态？”如果三个答案都是模型，说明还没有理解受约束 Agent。
+\end{beginnerbox}
+
+\section{问题、修复与验证}
+
+\textbf{引用为空却被判成功：}修复为正常回答必须有非空期望引用，且三方引用严格相等。
+
+\textbf{替身测试没有走真实图：}加入真实 SQLite clarification/resume、checkpoint 和真实 CLI 入口测试，避免只测注入的节点。
+
+\textbf{安全计数被案例名称“推导”：}改为从响应与授权集合的差集计算伪造商品、卡片、别名和引用。
+
+\textbf{JSON 合法但语义不安全：}动态缩小候选 schema，本地 Verifier 逐项检查，不能把格式门当事实门。
+
+\textbf{失败后旧 PASS 还在：}入口先使旧工件失效，成功后再成对发布新的摘要和报告。
+
+\section{阶段产出与验收边界}
+
+产出是受约束 Agent 运行时、CLI、checkpoint、双轨 Trace、离线评估器和 live gate。公开证据包括\filelink{artifacts/evaluation-summaries/phase-6-offline-agent.json}、\filelink{docs/reports/phase-6-offline-agent-evaluation.md}、\filelink{artifacts/evaluation-summaries/phase-6-agent.json}和\filelink{docs/reports/phase-6-agent-evaluation.md}。
+
+P6 在其范围内为\statuspassed：冻结离线案例、真实 DeepSeek 有界 gate 和完成审计在记录的代码与配置下通过；不证明人工 gold 质量、开放输入覆盖、并发负载、长期可用性或生产业务效果。
+
+\section{怎样进入下一阶段}
+
+P7 拿到的是已验证的流程、三类工具、Verifier、引用校验、checkpoint 和公开结果合同。它还需要一个面向人的电脑网页端，但网页不能把内部 AgentState 直接塞给浏览器，也不能因为页面能打开就宣称业务价值已验证。
+
+\section{面试怎么讲}
+
+\begin{interviewbox}
+“我做的是 model proposes, code disposes 的单 Agent。模型只看匿名安全卡并提交严格计划和草稿，P4 工具负责本地取证，Verifier 决定字段和引用是否得到证据支持。LangGraph 处理一次澄清和 checkpoint；离线案例通过后才跑 DeepSeek 的 15 乘 2 有界 gate。它证明工程边界，不代表生产 SLA。”
+\end{interviewbox}
+
+\textbf{掌握标准：}能从输入讲到最终状态，说明每一步新增了什么 state、模型和本地代码各有什么权力，以及任一验证失败为什么会安全停止。

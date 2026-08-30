@@ -1,0 +1,32 @@
+{
+  "observed_at": "2026-08-02T15:02:42+00:00",
+  "python_version": "3.12.13",
+  "python_supported": true,
+  "operating_system": "Windows",
+  "free_bytes": 523501719552,
+  "required_free_bytes": 2989024780,
+  "sources": [
+    {
+      "url": "https://mcauleylab.ucsd.edu/public_datasets/data/amazon_2023/raw/review_categories/Appliances.jsonl.gz",
+      "status": 206,
+      "total_bytes": 270209794,
+      "content_type": "application/gzip",
+      "accept_ranges": true,
+      "etag": "\"101b1302-62bda803121d9\"",
+      "last_modified": "Thu, 16 Jan 2025 22:41:53 GMT",
+      "error": null
+    },
+    {
+      "url": "https://mcauleylab.ucsd.edu/public_datasets/data/amazon_2023/raw/meta_categories/meta_Appliances.jsonl.gz",
+      "status": 206,
+      "total_bytes": 66406659,
+      "content_type": "application/gzip",
+      "accept_ranges": true,
+      "etag": "\"3f54903-62bd9ee3ef7b5\"",
+      "last_modified": "Thu, 16 Jan 2025 22:01:05 GMT",
+      "error": null
+    }
+  ],
+  "state": "PASSED",
+  "blockers": []
+}

@@ -1,0 +1,67 @@
+\chapter{P3：先约定什么算证据}
+
+\section{承上启下}
+
+P2 选出了 Ice Makers，但“评论里出现一个词”还不能直接变成运营结论。P3 要先回答：不同程序和不同时间分析评论时，是否遵守同一套说法？这一步像先制定一本共同的评分规则，再开发查询工具。
+
+\section{业务问题、输入与边界}
+
+输入是 P1 的数据记录、P2 的范围记录和审计结果。业务价值是让不同商品的 VOC 结果可以比较、可以回查；技术价值是把字段、分类和引用方式写成下游程序能够检查的约定。
+
+P3 不训练模型，不做人类金标准标注，也不把评论信号直接说成现实缺陷或因果影响。它规定的是“我们怎样描述当前数据中的信号”。
+
+\section{开发过程}
+
+\subsection{1. 先规定每条评论看哪些字段}
+
+规则明确商品键、评论商品键、文本、评分、时间、购买标记和帮助票如何对应，并继续带上 P1--P2 的来源记录。这个从输入到结果的来路记录叫\textbf{lineage}，可以先理解为“结果的家谱”。
+
+\subsection{2. 把运营问题分成八个体验维度}
+
+项目使用八个 aspect（体验维度）：\texttt{ice\_quality}、\texttt{noise}、\texttt{reliability}、\texttt{cleaning\_maintenance}、\texttt{capacity\_speed}、\texttt{ease\_setup}、\texttt{leakage} 和 \texttt{size\_portability}。例如“机器很吵”进入 noise，“清洗麻烦”进入 cleaning\_maintenance。维度名称是给程序用的固定标签；模型不能临时创造第九个维度并当成既定事实。
+
+\subsection{3. 区分支持、反对和冲突}
+
+词表把当前匹配到的内容记录为支持、反对或冲突信号。这是对本批评论的描述，不是通用情感评分，更不是“已经确认产品有缺陷”。
+
+\subsection{4. 用证据条数表达强弱}
+
+0 条为 \texttt{INSUFFICIENT}，1 条为 \texttt{WEAK}，2--4 条为 \texttt{MODERATE}，5 条及以上为 \texttt{STRONG}。这些等级只表示匹配记录数量，不会自动消除重复表达、样本偏差或评论真实性问题。
+
+\subsection{5. 给每条本地证据一个可回查的编号}
+
+本地 evidence ID 由数据版本、来源角色和源记录位置确定性生成。同一批输入重新计算时，仍能找到同一位置。这是项目内部的定位编号，不是 Amazon 官方评论 ID，不能公开冒充平台标识。
+
+\subsection{6. 记录标签是怎么来的}
+
+\textbf{silver} 是规则或测试产生的确定性期望，适合回归检查但未经人工确认；\textbf{reviewed} 需要实际人工审核记录；当前不能声称 \textbf{gold}，因为项目没有独立、充分且一致的人类金标准。
+
+\section{本阶段学到的知识}
+
+\textbf{数据合同}就是“程序共同遵守的表格和语义规则”；\textbf{contract identity} 是这套规则的版本号；\textbf{lineage} 是结果的来路；稳定本地 ID 是可回查的门牌号；\textbf{label provenance} 是标签来源说明。它们共同限制系统能说什么、不能说什么。
+
+\begin{beginnerbox}
+项目例子：某商品在 noise 维度下有多条反对信号，可以说“这批冻结评论中存在较强噪声相关信号”。不能直接说“商品已被证明存在噪声缺陷”，因为两句话的证据范围不同。
+\end{beginnerbox}
+
+\textbf{小练习：}一条规则结果连续通过测试，但从未有人审核，它是什么标签？答案仍是 silver；测试稳定不等于人工真值。
+
+\section{问题、修复与验证}
+
+主要问题是把词频、情绪、问题信号、缺陷和商业影响混成一个词。修复是分开记录体验维度、极性、强度和标签来源，并在输出中保留限定语。另一个问题是下游各自复制规则并悄悄修改，修复方式是保存合同身份并检查 lineage。验证覆盖八个维度、强度边界、极性词表、字段映射、标签政策和本地引用可重算性。
+
+\section{阶段产出与验收边界}
+
+权威产出是\filelink{artifacts/contracts/phase-3-evidence-policy.json}和\filelink{docs/decisions/phase-3-evidence-policy.md}。P3 在其范围内为\statuspassed：八个维度、极性、强度、引用和标签来源规则已经固定；不证明规则达到人工标注质量，也不证明评论信号对应现实缺陷。
+
+\section{怎样进入下一阶段}
+
+P4 将把这些规则放进本地证据工具，让程序快速找到商品和评论，并能回查引用。P4 可以改变实现方式，但不能重新解释本阶段的维度、极性、强度或标签来源。
+
+\section{面试怎么讲}
+
+\begin{interviewbox}
+“在做检索和 Agent 前，我先冻结证据合同：八个体验维度、词法极性、按记录数定义的强度、本地稳定引用和标签来源都由代码校验。下游必须携带同一 lineage。规则结果只叫 silver，本地 evidence ID 也不是平台官方评论 ID。”
+\end{interviewbox}
+
+\textbf{掌握标准：}能用一个评论例子解释数据合同怎样约束后面的检索、Agent 和网页结果，并区分“可回查”“人工复核”和“现实真值”。

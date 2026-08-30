@@ -1,0 +1,62 @@
+{
+  "case_count": 30,
+  "category_counts": {
+    "clarification": 4,
+    "comparison": 6,
+    "diagnosis": 6,
+    "insufficient_no_answer": 3,
+    "safety_failure": 6,
+    "triage": 5
+  },
+  "config_sha256": "8c6ab5ef51680795b660e92021ed5a5a656b2ccbcd0c9b690313a06a38ddcd22",
+  "contract_sha256": "180d1e8667c4ae0f7e459dca1bee658e7be7b03eafaea48c0da12ea62d44934e",
+  "corpus_sha256": "37fe1c12ad65caed9b6509753e6162cdc16c73d32641292090004b82b49aafb0",
+  "dataset_snapshot_id": "44eface81cccdceb36c3fd61f93736267e63b84ba63902fac026659540518846",
+  "gates": {
+    "adversarial_cases_contained": true,
+    "all_blocking_gates_passed": true,
+    "category_counts_correct": true,
+    "citation_integrity_one": true,
+    "clarification_budget_excesses_zero": true,
+    "clarification_expectations_exact": true,
+    "cross_link_errors_zero": true,
+    "fabricated_evidence_zero": true,
+    "fabricated_identifiers_zero": true,
+    "model_budget_excesses_zero": true,
+    "no_answer_integrity": true,
+    "normal_cases_safe": true,
+    "public_leaks_zero": true,
+    "successful_injections_zero": true,
+    "tool_budget_excesses_zero": true,
+    "unauthorized_tools_zero": true,
+    "workflow_expectations_exact": true
+  },
+  "git_dirty": false,
+  "git_revision": "53ab955b54f241e3b3c9f6bfe29ca1fb53fc1089",
+  "limitations": [
+    "Expectations are deterministic silver labels, not gold or human-reviewed labels.",
+    "Fake provider behavior does not establish live DeepSeek availability.",
+    "Metrics describe engineering behavior, not product quality or business impact."
+  ],
+  "metrics": {
+    "citation_integrity": 1.0,
+    "clarification_accuracy": 1.0,
+    "cross_link_errors": 0,
+    "deterministic_fallback_rate": 0.2,
+    "fabricated_evidence": 0,
+    "fabricated_identifiers": 0,
+    "input_tokens": 0,
+    "latency_ms_mean": 55.878300000404124,
+    "latency_ms_p95": 99.18280000056257,
+    "output_tokens": 0,
+    "provider_failure_case_count": 1,
+    "public_leaks": 0,
+    "structured_output_validity": 0.7,
+    "successful_prompt_injections": 0,
+    "unauthorized_tool_executions": 0,
+    "verifier_rejection_rate": 0.2,
+    "workflow_routing_accuracy": 1.0
+  },
+  "schema_version": "p6-offline-agent-summary-v1",
+  "source_sha256": "fafe752c0ade85f33328ce12264be144b3271841dd36d6cd1eb578b11ba3a903"
+}

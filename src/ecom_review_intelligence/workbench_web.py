@@ -1,0 +1,212 @@
+"""Local HTTP boundary for the P7 synthetic operations workbench."""
+
+from __future__ import annotations
+
+import re
+from collections.abc import Mapping, Sequence
+from pathlib import Path
+from typing import Any
+
+from fastapi import FastAPI, Request, Response
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
+from fastapi.templating import Jinja2Templates
+
+from ecom_review_intelligence.workbench_contracts import (
+    EvidenceDetail,
+    WorkbenchResumeRequest,
+    WorkbenchRun,
+    WorkbenchRunRequest,
+)
+from ecom_review_intelligence.workbench_service import (
+    SyntheticWorkbenchService,
+    WorkbenchEvidenceUnavailable,
+    WorkbenchInputError,
+    WorkbenchRunConflict,
+    WorkbenchRunNotFound,
+    WorkbenchService,
+)
+
+
+def _error(status_code: int, code: str, message: str) -> JSONResponse:
+    return JSONResponse(status_code=status_code, content={"error": {"code": code, "message": message}})
+
+
+def assert_response_keys_safe(value: Any) -> None:
+    """Reject prohibited field names and secret-like values in any response."""
+
+    def scan(item: Any) -> None:
+        if isinstance(item, Mapping):
+            for key, child in item.items():
+                normalized = re.sub(r"[^a-z0-9]+", "_", str(key).casefold()).strip("_")
+                if normalized in _PROHIBITED_KEYS or normalized.endswith(
+                    ("_api_key", "_local_path", "_password", "_secret")
+                ):
+                    raise ValueError("Public workbench response contains a prohibited field.")
+                scan(child)
+            return
+        if isinstance(item, Sequence) and not isinstance(item, (str, bytes, bytearray)):
+            for child in item:
+                scan(child)
+            return
+        if not isinstance(item, str):
+            return
+        if re.search(r"(?i)(?:DEEPSEEK_API_KEY|sk-[A-Za-z0-9_-]+|Bearer\s+\S+)", item):
+            raise ValueError("Public workbench response contains a secret-like value.")
+
+    scan(value)
+
+
+def assert_public_workbench_safe(value: Any) -> None:
+    """Full aggregate-surface scan: also bans identifiers, paths, and leak shapes."""
+
+    def scan(item: Any) -> None:
+        if isinstance(item, Mapping):
+            for child in item.values():
+                scan(child)
+            return
+        if isinstance(item, Sequence) and not isinstance(item, (str, bytes, bytearray)):
+            for child in item:
+                scan(child)
+            return
+        if not isinstance(item, str):
+            return
+        if re.search(r"(?<![A-Z0-9])B[A-Z0-9]{9}(?![A-Z0-9])", item, re.IGNORECASE):
+            raise ValueError("Public workbench response contains a product identifier.")
+        if re.search(r"(?<![0-9a-f])[0-9a-f]{64}(?![0-9a-f])", item, re.IGNORECASE):
+            raise ValueError("Public workbench response contains an evidence-like identifier.")
+        if re.search(
+            r"(?:[A-Za-z]:[\\/]|(?:\\\\|//)[^\\/]+[\\/]|(?:^|[\s('\"=])/(?!/)[^\s'\"<>]+)",
+            item,
+        ):
+            raise ValueError("Public workbench response contains an absolute path.")
+
+    assert_response_keys_safe(value)
+    scan(value)
+
+
+def _safe_run(run: WorkbenchRun) -> WorkbenchRun:
+    assert_public_workbench_safe(run.model_dump(mode="json"))
+    return run
+
+
+_PROHIBITED_KEYS = {
+    "api_key",
+    "authorization",
+    "evidence_id",
+    "local_path",
+    "password",
+    "product_id",
+    "raw_text",
+    "review_text",
+    "secret",
+}
+
+
+def create_workbench_app(service: WorkbenchService | None = None) -> FastAPI:
+    app = FastAPI(title="ECom Review Intelligence Workbench", docs_url=None, redoc_url=None)
+    backend = service or SyntheticWorkbenchService()
+    package_root = Path(__file__).resolve().parent
+    templates = Jinja2Templates(directory=package_root / "templates")
+    app.mount("/static", StaticFiles(directory=package_root / "static"), name="static")
+
+    @app.middleware("http")
+    async def security_headers(request: Request, call_next):
+        hostname = request.headers.get("host", "").rsplit(":", 1)[0].casefold()
+        if hostname not in {"127.0.0.1", "localhost", "testserver"}:
+            response = _error(400, "INVALID_HOST", "Host is not allowed.")
+        else:
+            response = await call_next(request)
+        response.headers["Content-Security-Policy"] = (
+            "default-src 'self'; script-src 'self'; style-src 'self'; "
+            "img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'none'"
+        )
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["Referrer-Policy"] = "no-referrer"
+        return response
+
+    @app.exception_handler(RequestValidationError)
+    async def validation_error(request: Request, error: RequestValidationError) -> JSONResponse:
+        del request, error
+        return _error(422, "INVALID_INPUT", "Request validation failed.")
+
+    @app.exception_handler(WorkbenchInputError)
+    async def input_error(request: Request, error: WorkbenchInputError) -> JSONResponse:
+        del request, error
+        return _error(422, "INVALID_INPUT", "Request validation failed.")
+
+    @app.exception_handler(WorkbenchRunNotFound)
+    async def not_found(request: Request, error: WorkbenchRunNotFound) -> JSONResponse:
+        del request, error
+        return _error(404, "RUN_NOT_FOUND", "Run was not found.")
+
+    @app.exception_handler(WorkbenchRunConflict)
+    async def conflict(request: Request, error: WorkbenchRunConflict) -> JSONResponse:
+        del request, error
+        return _error(409, "STATE_ERROR", "Run cannot be resumed.")
+
+    @app.exception_handler(WorkbenchEvidenceUnavailable)
+    async def evidence_unavailable(
+        request: Request, error: WorkbenchEvidenceUnavailable
+    ) -> JSONResponse:
+        del request, error
+        return _error(
+            404,
+            "EVIDENCE_DETAIL_UNAVAILABLE",
+            "Evidence detail is only available for completed controlled local runs.",
+        )
+
+    @app.exception_handler(Exception)
+    async def unknown_error(request: Request, error: Exception) -> JSONResponse:
+        del request, error
+        return _error(500, "INTERNAL_ERROR", "Request could not be completed.")
+
+    @app.get("/health")
+    def health() -> dict[str, str | bool]:
+        return {
+            "schema_version": "p7-workbench-health-v1",
+            "status": "ok",
+            "mode": backend.mode,
+            "live_enabled": False,
+        }
+
+    @app.get("/", include_in_schema=False)
+    def workbench(request: Request):
+        return templates.TemplateResponse(
+            request=request,
+            name="workbench.html",
+            context={"mode": backend.mode},
+        )
+
+    @app.get("/favicon.ico", include_in_schema=False, status_code=204)
+    def favicon() -> Response:
+        return Response(status_code=204)
+
+    @app.post("/api/v1/runs", status_code=201, response_model=WorkbenchRun)
+    def create_run(request: WorkbenchRunRequest) -> WorkbenchRun:
+        return _safe_run(backend.create_run(request))
+
+    @app.get("/api/v1/runs/{run_token}", response_model=WorkbenchRun)
+    def get_run(run_token: str) -> WorkbenchRun:
+        return _safe_run(backend.get_run(run_token))
+
+    @app.post("/api/v1/runs/{run_token}/resume", response_model=WorkbenchRun)
+    def resume_run(run_token: str, request: WorkbenchResumeRequest) -> WorkbenchRun:
+        return _safe_run(backend.resume_run(run_token, request))
+
+    @app.get(
+        "/api/v1/runs/{run_token}/evidence/{evidence_alias}",
+        response_model=EvidenceDetail,
+    )
+    def evidence_detail(run_token: str, evidence_alias: str) -> EvidenceDetail:
+        if backend.mode != "local" or not hasattr(backend, "get_evidence_rows"):
+            raise WorkbenchEvidenceUnavailable()
+        detail = backend.get_evidence_rows(run_token, evidence_alias)
+        # Reviewer text is untrusted local data: this owner-facing detail surface
+        # checks keys and secrets, and intentionally skips the value-shape rules
+        # that exist for the aggregate public surface.
+        assert_response_keys_safe(detail.model_dump(mode="json"))
+        return detail
+
+    return app

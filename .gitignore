@@ -1,0 +1,27 @@
+# Raw data and locally generated data products
+data/raw/
+data/interim/
+data/processed/
+artifacts/indexes/
+artifacts/evals/
+
+# Private career material and historical planning notes
+/简历/
+/规划/
+
+# Local runtime state
+.env
+.venv/
+__pycache__/
+.pytest_cache/
+.ruff_cache/
+*.py[cod]
+*.egg-info/
+.tools/
+tmp/pdfs/
+
+# Local editor and operating-system files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

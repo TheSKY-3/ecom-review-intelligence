@@ -1,0 +1,54 @@
+\usepackage[a4paper,margin=25mm,headheight=15pt]{geometry}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{longtable}
+\usepackage{tabularx}
+\usepackage{array}
+\usepackage{enumitem}
+\usepackage{listings}
+\usepackage[most]{tcolorbox}
+\usepackage{fancyhdr}
+\usepackage{microtype}
+\usepackage{xcolor}
+\usepackage{hyperref}
+
+\definecolor{HandbookGreen}{HTML}{176B5B}
+\definecolor{HandbookOrange}{HTML}{C4682D}
+\definecolor{HandbookInk}{HTML}{202725}
+\definecolor{HandbookGray}{HTML}{F2F4F3}
+\hypersetup{colorlinks=true,linkcolor=HandbookGreen,urlcolor=HandbookOrange}
+\graphicspath{{./}}
+\setlength{\parindent}{2em}
+\setlength{\parskip}{0.35em}
+\setlength{\emergencystretch}{4em}
+\tolerance=2500
+\sloppy
+\setlist{nosep,leftmargin=2em}
+\renewcommand{\arraystretch}{1.25}
+
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{ECom Review Intelligence Agent}
+\fancyhead[R]{\leftmark}
+\fancyfoot[C]{\thepage}
+
+\lstset{
+  basicstyle=\ttfamily\small,
+  backgroundcolor=\color{HandbookGray},
+  frame=single,
+  rulecolor=\color{HandbookGray},
+  breaklines=true,
+  columns=fullflexible,
+  showstringspaces=false
+}
+
+\newtcolorbox{factbox}{title=已有证据支持的事实,colback=green!4,colframe=HandbookGreen}
+\newtcolorbox{inferencebox}{title=基于证据的推断,colback=blue!3,colframe=blue!45!black}
+\newtcolorbox{advicebox}{title=建议,colback=orange!4,colframe=HandbookOrange}
+\newtcolorbox{boundarybox}{title=尚待验证或适用边界,colback=red!3,colframe=red!55!black}
+\newtcolorbox{beginnerbox}{title=初学者提示,colback=HandbookGray,colframe=gray!60!black}
+\newtcolorbox{interviewbox}{title=面试提示,colback=yellow!5,colframe=HandbookOrange}
+
+\newcommand{\filelink}[1]{{\small\nolinkurl{#1}}}
+\newcommand{\statuspassed}{\textcolor{HandbookGreen}{\textbf{PASSED}}}
+\newcommand{\statusprogress}{\textcolor{HandbookOrange}{\textbf{\scriptsize IN\_PROGRESS}}}

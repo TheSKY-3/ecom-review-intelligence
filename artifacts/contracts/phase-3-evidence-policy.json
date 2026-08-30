@@ -1,0 +1,196 @@
+{
+  "aspect_terms": {
+    "capacity_speed": [
+      "fast",
+      "quick",
+      "slow",
+      "capacity",
+      "batch",
+      "minutes"
+    ],
+    "cleaning_maintenance": [
+      "clean",
+      "cleaning",
+      "maintenance",
+      "descale",
+      "sanitize"
+    ],
+    "ease_setup": [
+      "easy",
+      "simple",
+      "setup",
+      "install",
+      "instructions"
+    ],
+    "ice_quality": [
+      "ice",
+      "cube",
+      "cubes",
+      "nugget",
+      "nuggets",
+      "clear"
+    ],
+    "leakage": [
+      "leak",
+      "leaking",
+      "drip",
+      "water"
+    ],
+    "noise": [
+      "noise",
+      "noisy",
+      "loud",
+      "quiet",
+      "sound"
+    ],
+    "reliability": [
+      "broke",
+      "broken",
+      "stopped",
+      "failed",
+      "failure",
+      "reliable",
+      "durable"
+    ],
+    "size_portability": [
+      "small",
+      "large",
+      "compact",
+      "counter",
+      "portable",
+      "size"
+    ]
+  },
+  "aspects": [
+    {
+      "aspect": "ice_quality",
+      "coverage": 0.608584,
+      "enabled": true,
+      "matched_reviews": 83135
+    },
+    {
+      "aspect": "noise",
+      "coverage": 0.127668,
+      "enabled": true,
+      "matched_reviews": 17440
+    },
+    {
+      "aspect": "reliability",
+      "coverage": 0.105085,
+      "enabled": true,
+      "matched_reviews": 14355
+    },
+    {
+      "aspect": "cleaning_maintenance",
+      "coverage": 0.058263,
+      "enabled": true,
+      "matched_reviews": 7959
+    },
+    {
+      "aspect": "capacity_speed",
+      "coverage": 0.159549,
+      "enabled": true,
+      "matched_reviews": 21795
+    },
+    {
+      "aspect": "ease_setup",
+      "coverage": 0.176137,
+      "enabled": true,
+      "matched_reviews": 24061
+    },
+    {
+      "aspect": "leakage",
+      "coverage": 0.165947,
+      "enabled": true,
+      "matched_reviews": 22669
+    },
+    {
+      "aspect": "size_portability",
+      "coverage": 0.134022,
+      "enabled": true,
+      "matched_reviews": 18308
+    }
+  ],
+  "audit_sha256": "23f001beb0c856b840b9d37b97a43dcdd35ba0051a2c8fe0a858c1fb93284f40",
+  "contract_sha256": "180d1e8667c4ae0f7e459dca1bee658e7be7b03eafaea48c0da12ea62d44934e",
+  "dataset_snapshot_id": "44eface81cccdceb36c3fd61f93736267e63b84ba63902fac026659540518846",
+  "enabled_aspects": [
+    "ice_quality",
+    "noise",
+    "reliability",
+    "cleaning_maintenance",
+    "capacity_speed",
+    "ease_setup",
+    "leakage",
+    "size_portability"
+  ],
+  "field_mapping": {
+    "helpful_vote": "reviews.helpful_vote",
+    "local_evidence_id": "sha256(evidence-v1 plus snapshot, source role, and one-based JSONL line)",
+    "product_key": "metadata.parent_asin",
+    "rating": "reviews.rating",
+    "review_product_key": "reviews.parent_asin",
+    "review_text": "reviews.text",
+    "timestamp": "reviews.timestamp",
+    "verified_purchase": "reviews.verified_purchase"
+  },
+  "git_revision": "e856a064b6d8b4a82b48083344e806b1d94bee3b",
+  "label_policy": {
+    "gold": "prohibited",
+    "reviewed": "manual reviewer record required",
+    "silver": "deterministic or test-derived expectation; not human-verified"
+  },
+  "observed_at": "2026-08-02T16:30:51+00:00",
+  "polarity_terms": {
+    "opposing": [
+      "bad",
+      "poor",
+      "broke",
+      "broken",
+      "noisy",
+      "loud",
+      "leak",
+      "slow",
+      "stopped",
+      "failed"
+    ],
+    "supporting": [
+      "great",
+      "good",
+      "love",
+      "easy",
+      "quiet",
+      "fast",
+      "perfect",
+      "reliable"
+    ]
+  },
+  "review_count_quantiles": {
+    "q10": 1,
+    "q25": 1,
+    "q50": 4,
+    "q75": 19,
+    "q90": 68
+  },
+  "selected_category": "Ice Makers",
+  "selected_product_count": 3278,
+  "selected_review_count": 136604,
+  "state": "PASSED",
+  "strength_rules": {
+    "INSUFFICIENT": {
+      "max_evidence": 0,
+      "min_evidence": 0
+    },
+    "MODERATE": {
+      "max_evidence": 4,
+      "min_evidence": 2
+    },
+    "STRONG": {
+      "min_evidence": 5
+    },
+    "WEAK": {
+      "max_evidence": 1,
+      "min_evidence": 1
+    }
+  }
+}

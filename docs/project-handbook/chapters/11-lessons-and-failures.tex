@@ -1,0 +1,175 @@
+\chapter{全项目问题、修复与可迁移经验}
+
+\begin{beginnerbox}
+P0--P7 已在对应阶段解释各自的开发过程。本章不再重讲阶段，而是把跨阶段反复出现的错误前提整理成可迁移经验。一个 PASS 只有在案例、入口、指标、阻断门和代码身份都明确时才有意义。
+
+如果你是第一次学习，可以先跳过本章。先把 P0--P7 的主线读懂，再回来把这里的失败案例当作“为什么要这样设计”的答案。
+\end{beginnerbox}
+
+\section{为什么需要分层评测}
+
+本项目的数据、检索、Agent 和界面承担不同责任，不能用一个指标覆盖全部层次。
+
+\begin{longtable}{p{0.12\textwidth}p{0.30\textwidth}p{0.26\textwidth}p{0.20\textwidth}}
+\toprule
+层次 & 主要问题 & 可以证明 & 不能证明 \\
+\midrule
+P1--P4 & 输入、合同、证据库是否一致 & 快照、lineage、精确关联和引用可重算 & 现实商品质量 \\
+P5 & 检索是否返回预期证据 & 冻结 silver 案例内的召回、引用和无答案行为 & 人工 gold 相关性或业务效果 \\
+P6 offline & Agent 图和失败分支是否稳定 & 路由、澄清、工具、引用、攻击和降级的工程行为 & 当前真实供应商可用性 \\
+P6 live & 真实 DeepSeek 是否遵守当前协议 & 冻结案例和当前版本下的有界真实调用行为 & 开放输入可靠性和生产 SLA \\
+P7 browser/local & 界面和 P6 接线能否受控运行 & 三工作流、恢复、公开 DTO、视口和本地接线 & 真人采纳、工时节省和决策改善 \\
+\bottomrule
+\end{longtable}
+
+\section{P5：负结果同样有价值}
+
+P5 使用预冻结 silver 案例比较简单词法基线与 FTS5/BM25。结果没有证明 BM25 在当前小范围和标签口径下更好，因此项目没有为了“技术看起来更高级”而强行增加向量数据库或复杂检索。
+
+这项结论必须带两个边界：
+
+\begin{enumerate}
+  \item silver 期望证据部分来自同一词法口径，存在循环偏向；
+  \item 冻结案例适合回归，不等于人工标注的独立 relevance 数据集。
+\end{enumerate}
+
+\begin{inferencebox}
+基于当前证据，继续采用较简单检索是合理工程选择；但不能下结论说 BM25 或向量检索普遍无效。若后续建立独立人工相关性集，技术选择应重新比较。
+\end{inferencebox}
+
+\section{P6 offline：怎样防止“假通过”}
+
+离线评测覆盖正常诊断、比较、分流、澄清、真实无答案、提示注入、越权工具、伪造标识、供应商失败和预算限制。早期实现曾出现过几类 false PASS 风险：
+
+\begin{itemize}
+  \item 根据场景名称推断“攻击已被阻止”，而不是检查真实输出；
+  \item 期望引用为空时，实际也为空，从而形成引用完整性的真空通过；
+  \item 无答案案例没有回真实 store 验证；
+  \item 测试只验证注入对象，没有走真实编译图或真实 CLI；
+  \item 失败重跑后旧的公开 PASS 仍可能存在。
+\end{itemize}
+
+修复后，评测要求 expected、tool 和 rendered 三组引用严格相等，响应中的引用逐一回本地库验证；有答案案例必须有非空真实证据；每一项状态、工作流、澄清和安全预期都是阻断门；公开摘要与报告成对发布，失败则旧 PASS 失效。
+
+\begin{factbox}
+当前公开 offline 报告记录 30 个冻结案例的阻断门通过。它证明当前冻结范围内的工程行为，不证明回答达到人工 gold 质量，也不证明 DeepSeek 随时可用。
+\end{factbox}
+
+\section{P6 live：真实模型为什么仍需本地校验}
+
+真实 DeepSeek 接入暴露了两个递进问题。
+
+\subsection{问题一：JSON 合法不等于业务草稿合法}
+
+首次兼容性 smoke 中，模型可以返回可解析 JSON，但结构不是系统要求的业务草稿。修复是使用强制 tool call，让供应商按 \texttt{submit\_agent\_draft} 的 schema 提交结构化结果。
+
+\subsection{问题二：结构合法不等于字段获得授权}
+
+即使 schema 通过，模型仍可能改写证据卡的极性、强度或别名。补充 prompt 并不能形成可靠边界，因为 prompt 只是要求，不是执行控制。
+
+最终方案分为两层：
+
+\begin{enumerate}
+  \item 根据本次安全证据卡动态收窄允许值，减少模型可提交空间；
+  \item 本地 Verifier 逐字段核对 workflow、商品别名、aspect、卡片别名、极性、强度和引用；不一致时只允许一次修复，再失败则确定性降级。
+\end{enumerate}
+
+\begin{beginnerbox}
+Structured Output 回答“格式能不能解析”；Verifier 回答“字段是不是来自这次任务授权的证据”。两者不能互相替代。
+\end{beginnerbox}
+
+\section{15 乘 2 gate 应该怎样解释}
+
+真实模型 gate 从冻结案例中选择 15 项，每项独立运行两次。完整发布要求恰好形成 30 个独立结果，供应商记录与 HTTP 尝试对齐，任何单案例失败、重复 run/thread 或不完整重复都会阻断。
+
+当前报告记录 26 次验证结果和 4 次预期证据不足降级，状态与引用预期全部通过，未记录越权工具、成功注入、伪造标识或公开泄漏。
+
+\begin{boundarybox}
+这不是统计显著实验，也不是模型质量排行榜。它不覆盖未来模型版本、任意用户输入、网络波动、并发、长期成本或生产运维，因此不能写成“准确率百分之百”“生产稳定”或“达到 SLA”。
+\end{boundarybox}
+
+\section{安全指标怎样避免自我证明}
+
+安全评测必须观察真实行为，而不能由测试场景名称直接生成结论。
+
+\begin{itemize}
+  \item \textbf{提示注入：}检查攻击文本是否改变了受控 workflow、商品范围、工具或引用；
+  \item \textbf{越权工具：}检查实际执行工具是否超出 router 的唯一授权；
+  \item \textbf{伪造标识：}从响应提取商品、证据、卡片和运行期别名，与当前授权集合做差集；
+  \item \textbf{公开泄漏：}递归扫描公开摘要、报告和响应中的禁止键和值形状；
+  \item \textbf{无答案：}要求 tool 和 rendered 都没有引用，并返回明确安全降级；
+  \item \textbf{预算：}模型调用、工具执行和修复次数必须在单调 ledger 内。
+\end{itemize}
+
+模型“说自己没有越权”不算证据。必须由本地执行记录、集合比较和回库校验产生指标。
+
+\section{Trace：可观察性与隐私的平衡}
+
+本项目采用双轨 Trace：
+
+\begin{itemize}
+  \item 本地敏感 Trace 记录调试所需状态，保持 ignored，不进入公开仓库；
+  \item 公开 Trace 只保留闭集、聚合、安全字段，并经过 serializer 和值扫描。
+\end{itemize}
+
+P7 曾出现 no-op trace writer 被标为 \texttt{trace\_written=True} 的假阳性。修复后，写入成功必须对应真实目标和结果；公开 trace 继续遵守 P6 schema。Trace 证明路径和状态发生过，不证明内容现实正确。
+
+\section{失败案例一：手工数据下载与证据边界}
+
+\textbf{现象：}自动下载受环境限制，最终由用户手工取得文件。\par
+\textbf{错误前提：}文件存在就等于获得了完整官方下载证据。\par
+\textbf{根因：}手工传输缺少浏览器 HTTP 回执或官方 checksum。\par
+\textbf{处理：}对本地文件做大小、gzip 完整性和本地哈希校验，并在报告中降低结论强度。\par
+\textbf{面试要点：}我区分“本地文件完整”和“官方端到端传输已独立证明”，没有补造来源证据。
+
+\section{失败案例二：算法推荐与业务选择冲突}
+
+\textbf{现象：}P2 算法候选与最终 Ice Makers MVP 选择不完全一致。\par
+\textbf{错误做法：}为了让结果看起来一致，事后调整权重。\par
+\textbf{处理：}保留算法推荐，单独记录人工业务 override 和理由。\par
+\textbf{学习：}数据分析负责提供证据，产品决策还要考虑求职展示、范围、时间和可解释性。
+
+\section{失败案例三：Windows 文件句柄阻止原子替换}
+
+\textbf{现象：}P4 构建临时 SQLite 后，Windows 因仍有连接或句柄而拒绝替换。\par
+\textbf{根因：}验证逻辑仍持有文件连接；Unix 上不明显的句柄生命周期在 Windows 上成为阻断。\par
+\textbf{修复：}把构建、关闭、复核和原子替换顺序显式化，失败时不覆盖旧的有效库。\par
+\textbf{面试要点：}原子发布不是一个函数名，而是临时产物、完整校验、句柄释放和最终替换共同形成的行为。
+
+\section{失败案例四：恢复流程只在假对象中通过}
+
+\textbf{现象：}早期 clarification/resume 测试证明了注入对象，却没有证明真实 SQLite checkpoint 关闭重开后可恢复。\par
+\textbf{修复：}改用不透明 UUID4 token，增加真实图、真实 store、关闭重开、跨线程隔离、错误 token 和入口级两次调用测试。\par
+\textbf{学习：}单元测试可以证明局部逻辑，真实入口测试才证明组件接线。
+
+\section{失败案例五：公开 PASS 与代码身份脱节}
+
+\textbf{现象：}旧版本评测只记录 Git revision，工作树修改或入口脚本变化可能没有进入身份。\par
+\textbf{修复：}同时记录源码摘要、dirty 状态、数据快照、合同和配置身份；私有明细由完成审计重新聚合，公开报告必须等于固定 renderer。\par
+\textbf{学习：}一个 PASS 必须绑定“什么数据、什么代码、什么配置、什么案例”，否则只是无上下文标签。
+
+\section{失败案例六：P7 工程 PASS 不能代替真人试用}
+
+浏览器自动化可以验证元素关系、溢出、网络错误、安全响应和截图，但它不会像运营人员一样判断证据是否有用。开发者完成 synthetic 任务也不是目标用户证据。
+
+因此 P7 状态保持 \statusprogress。真正的关闭条件是目标运营角色完成结构化试用，并记录手工基线、工作台结果、引用复核、采纳/修改/拒绝和失败原因。
+
+\section{遇到失败时的通用分析模板}
+
+\begin{enumerate}
+  \item \textbf{现象：}只描述观察到的输出和入口；
+  \item \textbf{错误前提：}指出原先把什么当成了证明；
+  \item \textbf{根因：}定位到合同、数据、状态、权限、供应商或发布边界；
+  \item \textbf{最小修复：}不扩大范围，只关闭当前可重现缺口；
+  \item \textbf{反例测试：}先让旧实现失败，再实现修复；
+  \item \textbf{真实入口验证：}避免只在 mock 或 helper 中通过；
+  \item \textbf{结论边界：}写清修复证明什么，仍不能证明什么。
+\end{enumerate}
+
+\begin{interviewbox}
+回答 Bad Case 时不要只说“最后修好了”。更好的结构是：“我一开始把 A 误当成 B；独立审查用这个反例证明会假通过；我先写失败测试，再把校验移到真实入口；现在能证明 C，但 D 仍需用户或生产证据。”
+\end{interviewbox}
+
+\section{证据指针}
+
+评测结果和边界可追溯到 \filelink{docs/reports/phase-5-retrieval-evaluation.md}、\filelink{docs/reports/phase-6-offline-agent-evaluation.md}、\filelink{docs/reports/phase-6-agent-evaluation.md}、\filelink{docs/reports/phase-7-workbench-validation.md} 与 \filelink{docs/interview-casebook.md}。

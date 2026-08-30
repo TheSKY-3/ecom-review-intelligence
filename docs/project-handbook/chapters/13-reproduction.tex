@@ -1,0 +1,180 @@
+\chapter{复现、Overleaf 与后续路线}
+
+\begin{beginnerbox}
+本章解决三个实际问题：怎样运行项目、怎样配置可选的 DeepSeek Key、怎样把这套 LaTeX 工程上传到 Overleaf 并得到 PDF。三者不是同一件事：阅读和编译手册不需要 API；默认工作台也不调用 DeepSeek。
+
+第一次复现建议只做“阅读手册”和“编译手册”两层：先确认自己能读懂主线，再尝试修改一小段文字并在 Overleaf 重新编译。synthetic 工作台、本地回归和真实模型 gate 属于后续练习。
+\end{beginnerbox}
+
+\section{先选择你真正需要的复现层级}
+
+\begin{longtable}{p{0.18\textwidth}p{0.30\textwidth}p{0.38\textwidth}}
+\toprule
+层级 & 适合做什么 & 需要什么 \\
+\midrule
+阅读手册 & 学习项目、准备简历与面试 & PDF 阅读器即可 \\
+编译手册 & 修改文字、替换截图、学习 LaTeX & Overleaf 或本地 Tectonic/XeLaTeX \\
+synthetic 工作台 & 演示界面和三个运营流程 & Python 环境；不需要原始数据和 API Key \\
+本地受控回归 & 验证 P7 到 P6 图和 SQLite 工具的接线 & 已有本地处理数据；需要显式确认 \\
+真实模型 gate & 验证当前 DeepSeek 协议和冻结案例 & API Key、联网、预算和显式确认 \\
+\bottomrule
+\end{longtable}
+
+\begin{boundarybox}
+能运行上一层，不自动证明下一层。例如：Overleaf 编译成功只证明文档工程完整；synthetic 页面能操作只证明受控演示流程；真实模型 gate 通过也不等于生产 SLA 或真实业务效果。
+\end{boundarybox}
+
+\section{Windows 上建立 Python 环境}
+
+打开 PowerShell，进入仓库根目录后执行：
+
+\begin{lstlisting}[language={}]
+python -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -e ".[dev]"
+.\.venv\Scripts\python.exe -m pytest
+.\.venv\Scripts\python.exe -m ruff check .
+\end{lstlisting}
+
+如果看到命令行左侧出现 PowerShell 提示符，不需要先激活虚拟环境，因为命令已经直接指定了虚拟环境内的 Python。这样比依赖当前窗口是否激活更容易复现。
+
+\section{运行默认 P7 工作台}
+
+先做不启动服务的配置检查：
+
+\begin{lstlisting}[language={}]
+.\.venv\Scripts\python.exe scripts\run_phase7_workbench.py --check
+\end{lstlisting}
+
+再启动默认 synthetic 模式：
+
+\begin{lstlisting}[language={}]
+.\.venv\Scripts\python.exe scripts\run_phase7_workbench.py --port 8765
+\end{lstlisting}
+
+浏览器访问 \url{http://127.0.0.1:8765}。synthetic 是“确定性演示数据”，用于验证界面和流程；它不读取 DeepSeek Key，不读取原始评论，也不展示本地商品或证据标识。
+
+结束服务时，回到启动服务的 PowerShell 窗口，按 \texttt{Ctrl+C}。如果页面打不开，依次检查：命令是否仍在运行、端口是否被占用、浏览器地址是否为 loopback 地址、终端是否出现固定错误信息。
+
+\section{DeepSeek Key：什么时候才需要}
+
+\subsection{不需要 Key 的情况}
+
+下列工作都不需要 Key：阅读或编译手册、运行单元测试、运行默认 synthetic 工作台、阅读已经提交的聚合评测报告。
+
+\subsection{需要 Key 的情况}
+
+只有你明确运行真实 DeepSeek smoke 或 live evaluation 时才需要。Key 不应写进 Python、LaTeX、Markdown、命令参数、截图、日志、\texttt{.env} 或 Git 提交。
+
+\subsection{推荐的 Windows 用户环境变量方法}
+
+在 PowerShell 中运行下面的命令，将尖括号内容替换为自己的 Key。该命令会把值保存为当前 Windows 用户环境变量；关闭并重新打开 PowerShell 后才会自然进入新进程。
+
+\begin{lstlisting}[language={}]
+[Environment]::SetEnvironmentVariable(
+  "DEEPSEEK_API_KEY",
+  "<your-key>",
+  "User"
+)
+\end{lstlisting}
+
+不要把真实值复制进手册或提交记录。配置完成后，关闭当前 PowerShell，重新打开一个窗口，再用布尔值检查存在性：
+
+\begin{lstlisting}[language={}]
+[bool]$env:DEEPSEEK_API_KEY
+\end{lstlisting}
+
+返回 \texttt{True} 表示当前进程看到了变量；不要使用会把完整值打印到屏幕的命令。若返回 \texttt{False}，先检查是否重新打开了 PowerShell，再检查用户环境变量名称拼写。PowerShell 与传统 CMD 都能运行项目，但本项目文档和命令以 PowerShell 为准。
+
+\subsection{运行有界 live gate}
+
+先只运行一个兼容性 smoke：
+
+\begin{lstlisting}[language={}]
+.\.venv\Scripts\python.exe scripts\run_phase6_live_evaluation.py \
+  --project-root . --case-limit 1 --acknowledge-live-api
+\end{lstlisting}
+
+只有 smoke 成功、预算允许且明确理解会产生 API 调用时，才执行冻结案例的两次重复 gate：
+
+\begin{lstlisting}[language={}]
+.\.venv\Scripts\python.exe scripts\run_phase6_live_evaluation.py \
+  --project-root . --repetitions 2 --acknowledge-live-api
+\end{lstlisting}
+
+\begin{boundarybox}
+单案例 smoke 不发布 PASS。完整 gate 也只证明当前代码、当前配置和冻结案例下的有界行为。模型版本、网络和供应商策略可能变化，因此旧结果不能替代未来重跑。
+\end{boundarybox}
+
+\section{把 LaTeX 工程上传到 Overleaf}
+
+\subsection{第一步：准备 ZIP}
+
+只压缩 \filelink{docs/project-handbook/} 目录中的内容。ZIP 根目录打开后应直接看到 \filelink{main.tex}、\filelink{preamble.tex}、\filelink{chapters/} 和 \filelink{assets/}，不要多套一层本机绝对目录。
+
+\subsection{第二步：创建项目}
+
+登录 Overleaf，选择“New Project”中的“Upload Project”，上传 ZIP。上传完成后，在左侧文件树确认九个章节和两张 PNG 截图都存在。
+
+\subsection{第三步：选择编译器}
+
+打开项目菜单，将 Compiler 设为 \textbf{XeLaTeX}，将 Main document 设为 \filelink{main.tex}。本工程使用 \texttt{ctexbook} 和 Fandol 字体，目的是避免依赖某一台 Windows 电脑的私有中文字体。
+
+\subsection{第四步：编译和下载}
+
+点击 Recompile。目录和交叉引用首次可能需要多轮编译，Overleaf 会自动处理常见情况。右侧 PDF 正常显示后，使用 Download PDF 下载。
+
+\subsection{第五步：定位常见错误}
+
+\begin{longtable}{p{0.25\textwidth}p{0.62\textwidth}}
+\toprule
+现象 & 优先检查 \\
+\midrule
+中文乱码或字体错误 & 编译器是否误选为 pdfLaTeX；应使用 XeLaTeX \\
+找不到章节 & ZIP 是否保留 \filelink{chapters/}，\texttt{main.tex} 中相对路径是否被改动 \\
+找不到截图 & \filelink{assets/} 是否完整，文件名大小写是否一致 \\
+百分号后文字消失 & LaTeX 中百分号是注释符号，正文百分比应正确转义 \\
+下划线报错 & 普通正文中的下划线应转义或放入等宽命令 \\
+表格越界 & 缩短单元格、改用跨页表，不要把整表缩到无法阅读 \\
+目录页码未更新 & 再编译一次，确保交叉引用稳定 \\
+\bottomrule
+\end{longtable}
+
+\section{本地编译与验证}
+
+仓库提供固定入口：
+
+\begin{lstlisting}[language={}]
+powershell -ExecutionPolicy Bypass \
+  -File scripts/build_project_handbook.ps1
+.\.venv\Scripts\python.exe scripts\verify_project_handbook.py \
+  --project-root .
+\end{lstlisting}
+
+最终 PDF 位于：
+
+\begin{lstlisting}[language={}]
+output/pdf/ecom-review-intelligence-project-handbook.pdf
+\end{lstlisting}
+
+构建中间文件只进入 \filelink{tmp/pdfs/project-handbook/}。验证器检查章节文本、截图嵌入、页数、编译日志和公开安全边界。文本检查不能代替视觉检查，因此最终还必须把每一页渲染为 PNG，检查重叠、裁切、乱码、黑块、空页和不可读表格。
+
+\section{修改手册时的安全规则}
+
+\begin{enumerate}
+  \item 只写仓库相对路径，不写本机盘符路径。
+  \item 不复制原始评论、真实商品标识、本地证据标识或私有岗位材料。
+  \item 不写 Key 值，不把包含 Key 的终端截图放入文档。
+  \item 更新阶段状态时，同时核对 canonical master plan 和当前状态页。
+  \item 测试结果必须来自同一版本的实际运行，不沿用可能过期的数字。
+  \item 自动化验证和真人业务验证必须分开表述。
+\end{enumerate}
+
+\section{后续路线}
+
+当前最重要的下一步不是继续增加框架，而是完成 P7 目标运营用户的结构化试用。至少一名目标角色应对同一组任务分别完成手工基线和工作台操作，记录首次有效证据、引用复核、采纳/修改/拒绝及失败原因。
+
+在得到真实试用证据前，可以提出“可能减少重复筛选和整理”的价值假设，但不能声称已经节省工时或改善决策。若试用显示问题不在评论检索，而在企业数据接入、团队协作或权限审批，下一阶段应优先修正产品定义，而不是继续增加 Agent 节点。
+
+\begin{interviewbox}
+复现能力本身就是面试证据。比起背诵框架名称，更有说服力的表达是：我能从干净环境启动受控模式，解释每个 gate 为什么存在，复现一个失败分支，并清楚说明哪些结论还没有真实用户证据。
+\end{interviewbox}

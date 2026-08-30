@@ -1,0 +1,107 @@
+<svg width="1240" height="760" viewBox="0 0 1240 760" xmlns="http://www.w3.org/2000/svg" font-family="Segoe UI, Microsoft YaHei, PingFang SC, sans-serif">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#FFFFFF"/>
+      <stop offset="1" stop-color="#F3F7FB"/>
+    </linearGradient>
+    <radialGradient id="glowA" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#E8A33D" stop-opacity="0.07"/>
+      <stop offset="1" stop-color="#E8A33D" stop-opacity="0"/>
+    </radialGradient>
+    <marker id="arw" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#7C97B4"/>
+    </marker>
+    <marker id="arwAmber" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#A0650A"/>
+    </marker>
+  </defs>
+
+  <rect width="1240" height="760" fill="url(#bg)"/>
+  <ellipse cx="1080" cy="70" rx="380" ry="190" fill="url(#glowA)"/>
+
+  <rect x="45" y="42" width="5" height="26" rx="2.5" fill="#A0650A"/>
+  <text x="62" y="62" fill="#17233A" font-size="22" font-weight="600">ECom Review Intelligence · 系统架构</text>
+  <text x="1195" y="60" text-anchor="end" fill="#8296AC" font-size="14" font-family="Cascadia Code, Consolas, monospace">每层只解决一个不确定性 · 上游身份不可被下游改写</text>
+
+  <!-- ① 治理层 -->
+  <text x="45" y="112" fill="#3E6B96" font-size="14" font-family="Cascadia Code, Consolas, monospace">① 治理层 · 先冻结口径，再写代码</text>
+  <g>
+    <rect x="45" y="124" width="330" height="96" rx="10" fill="#F6F8FB" stroke="#D8E0EA" stroke-width="1.5"/>
+    <text x="210" y="156" text-anchor="middle" fill="#17233A" font-size="18" font-weight="600">冻结快照</text>
+    <text x="210" y="182" text-anchor="middle" fill="#2E3A4C" font-size="14">Amazon 评论公开数据集 · SHA-256 登记</text>
+    <text x="210" y="204" text-anchor="middle" fill="#5E7A99" font-size="13">价值：所有后续分析基于同一份输入</text>
+
+    <rect x="455" y="124" width="330" height="96" rx="10" fill="#F6F8FB" stroke="#D8E0EA" stroke-width="1.5"/>
+    <text x="620" y="156" text-anchor="middle" fill="#17233A" font-size="18" font-weight="600">证据合同</text>
+    <text x="620" y="182" text-anchor="middle" fill="#2E3A4C" font-size="14">Ice Makers 类目 · 8 个体验维度 · 极性/强度/引用规则</text>
+    <text x="620" y="204" text-anchor="middle" fill="#5E7A99" font-size="13">价值：任何团队不会临时创造标签口径</text>
+
+    <rect x="865" y="124" width="330" height="96" rx="10" fill="#F6F8FB" stroke="#D8E0EA" stroke-width="1.5"/>
+    <text x="1030" y="156" text-anchor="middle" fill="#17233A" font-size="18" font-weight="600">流式质量审计</text>
+    <text x="1030" y="182" text-anchor="middle" fill="#2E3A4C" font-size="14">约 212 万条评论审计 · 210 万条精确关联到商品</text>
+    <text x="1030" y="204" text-anchor="middle" fill="#5E7A99" font-size="13">价值：证据不会串到别的商品头上</text>
+  </g>
+  <line x1="375" y1="172" x2="451" y2="172" stroke="#7C97B4" stroke-width="2" marker-end="url(#arw)"/>
+  <line x1="785" y1="172" x2="861" y2="172" stroke="#7C97B4" stroke-width="2" marker-end="url(#arw)"/>
+
+  <!-- ② 证据层 -->
+  <text x="45" y="262" fill="#3E6B96" font-size="14" font-family="Cascadia Code, Consolas, monospace">② 证据层 · 本地引擎掌握事实，模型不读原始评论</text>
+  <g>
+    <rect x="45" y="274" width="1150" height="118" rx="12" fill="#FDF9F2" stroke="#A0650A" stroke-opacity="0.4" stroke-width="1.4"/>
+    <text x="75" y="308" fill="#17233A" font-size="19" font-weight="600">SQLite / FTS5 本地证据引擎</text>
+    <text x="75" y="334" fill="#2E3A4C" font-size="14.5">3,278 个商品 · 136,604 条精确关联评论 · 确定性查询 · 稳定引用 ID · 原子建库</text>
+    <text x="75" y="360" fill="#A0650A" font-size="14" font-weight="600">为什么：外部模型只拿到运行期别名和聚合证据卡——编造、串商品、越权查询在结构上不可能发生</text>
+
+    <rect x="920" y="290" width="248" height="82" rx="8" fill="#FFFFFF" stroke="#D8E0EA" stroke-width="1.2"/>
+    <text x="1044" y="318" text-anchor="middle" fill="#3E6B96" font-size="14" font-family="Cascadia Code, Consolas, monospace">检索基线对比</text>
+    <text x="1044" y="342" text-anchor="middle" fill="#2E3A4C" font-size="13">FTS5/BM25 未显示独立优势</text>
+    <text x="1044" y="361" text-anchor="middle" fill="#5E7A99" font-size="12.5">→ 不为炫技上向量库（负结果决策）</text>
+  </g>
+  <line x1="620" y1="220" x2="620" y2="270" stroke="#7C97B4" stroke-width="2" marker-end="url(#arw)"/>
+
+  <!-- ③ 智能层 -->
+  <text x="45" y="434" fill="#3E6B96" font-size="14" font-family="Cascadia Code, Consolas, monospace">③ 智能层 · 模型在规则内协作，输出必须逐字段复核</text>
+  <g>
+    <rect x="45" y="446" width="360" height="110" rx="10" fill="#F6F8FB" stroke="#D8E0EA" stroke-width="1.5"/>
+    <text x="225" y="478" text-anchor="middle" fill="#17233A" font-size="18" font-weight="600">受约束 Agent（LangGraph）</text>
+    <text x="225" y="504" text-anchor="middle" fill="#2E3A4C" font-size="13.5">只做澄清与规划 · 单工具授权 · 可恢复 checkpoint</text>
+    <text x="225" y="528" text-anchor="middle" fill="#5E7A99" font-size="13">预算按真实调用单调记账 · 异常即安全降级</text>
+
+    <rect x="475" y="446" width="360" height="110" rx="10" fill="#F6F8FB" stroke="#D8E0EA" stroke-width="1.5"/>
+    <text x="655" y="478" text-anchor="middle" fill="#17233A" font-size="18" font-weight="600">本地 Verifier</text>
+    <text x="655" y="504" text-anchor="middle" fill="#2E3A4C" font-size="13.5">逐字段核对极性/强度/别名 · 引用逐条回库校验</text>
+    <text x="655" y="528" text-anchor="middle" fill="#5E7A99" font-size="13">不一致只允许修复一次，再失败即确定性降级</text>
+
+    <rect x="905" y="446" width="290" height="110" rx="10" fill="#FDF6EA" stroke="#A0650A" stroke-opacity="0.55" stroke-width="1.4"/>
+    <text x="1050" y="478" text-anchor="middle" fill="#A0650A" font-size="18" font-weight="600">真实模型评测门</text>
+    <text x="1050" y="504" text-anchor="middle" fill="#2E3A4C" font-size="13.5">15 个冻结案例 × 2 = 30 个独立结果</text>
+    <text x="1050" y="528" text-anchor="middle" fill="#A0650A" font-size="13.5" font-weight="600">26 通过 · 4 次预期降级 · 0 越权/注入成功</text>
+  </g>
+  <line x1="405" y1="501" x2="471" y2="501" stroke="#7C97B4" stroke-width="2" marker-end="url(#arw)"/>
+  <line x1="835" y1="501" x2="901" y2="501" stroke="#A0650A" stroke-width="2" marker-end="url(#arwAmber)"/>
+  <line x1="655" y1="392" x2="655" y2="442" stroke="#7C97B4" stroke-width="2" marker-end="url(#arw)"/>
+
+  <!-- ④ 业务层 -->
+  <text x="45" y="596" fill="#3E6B96" font-size="14" font-family="Cascadia Code, Consolas, monospace">④ 业务层 · 运营工作台（本地受控模式实测）</text>
+  <g>
+    <rect x="45" y="608" width="368" height="104" rx="10" fill="#FFFFFF" stroke="#D8E0EA" stroke-width="1.2"/>
+    <rect x="45" y="608" width="4" height="104" rx="2" fill="#5F8D5F"/>
+    <text x="69" y="640" fill="#17233A" font-size="17" font-weight="600">01 SKU 体验诊断</text>
+    <text x="69" y="664" fill="#2E3A4C" font-size="13.5">单商品 × 单维度：支持/反对/冲突/证据不足</text>
+    <text x="69" y="686" fill="#5E7A99" font-size="12.5">实测：766 条匹配 → 5 张证据卡（AGLUCKY·噪音）</text>
+
+    <rect x="435" y="608" width="368" height="104" rx="10" fill="#FFFFFF" stroke="#D8E0EA" stroke-width="1.2"/>
+    <rect x="435" y="608" width="4" height="104" rx="2" fill="#3E6B96"/>
+    <text x="459" y="640" fill="#17233A" font-size="17" font-weight="600">02 竞品证据比较</text>
+    <text x="459" y="664" fill="#2E3A4C" font-size="13.5">2–5 个商品同维度对比 · 只比证据不判优劣</text>
+    <text x="459" y="686" fill="#5E7A99" font-size="12.5">实测：AGLUCKY 占优 · GE Opal 观察（6,325 条）</text>
+
+    <rect x="825" y="608" width="370" height="104" rx="10" fill="#FFFFFF" stroke="#D8E0EA" stroke-width="1.2"/>
+    <rect x="825" y="608" width="4" height="104" rx="2" fill="#A0650A"/>
+    <text x="849" y="640" fill="#17233A" font-size="17" font-weight="600">03 问题信号分诊</text>
+    <text x="849" y="664" fill="#2E3A4C" font-size="13.5">产出「先核查什么」的调查顺序 · 附责任团队</text>
+    <text x="849" y="686" fill="#5E7A99" font-size="12.5">实测：三品 8,828 条 → 核查队列（冲突优先）</text>
+  </g>
+
+  <text x="45" y="742" fill="#5E7A99" font-size="13.5">注：所有界面展示使用受控别名（不泄露内部商品标识）；评论文本仅本地按需可见。P0–P6 工程门已通过，P7 目标用户结构化试用进行中——工程 PASS 不代替真人试用。</text>
+</svg>

@@ -1,0 +1,49 @@
+{
+  "interactions": [
+    {
+      "kind": "plan",
+      "value": {
+        "aspects": [
+          "noise"
+        ],
+        "product_terms": [
+          "PRODUCT_1"
+        ],
+        "workflow": "diagnosis"
+      }
+    },
+    {
+      "kind": "draft",
+      "value": {
+        "claims": [
+          {
+            "aspect": "noise",
+            "claim_type": "aspect_summary",
+            "evidence_strength": "WEAK",
+            "polarity": "opposing",
+            "product_aliases": [
+              "PRODUCT_1"
+            ],
+            "safe_evidence_card_refs": [
+              "CARD_1"
+            ]
+          }
+        ],
+        "follow_up_action_codes": [],
+        "limitation_codes": [
+          "REVIEW_EVIDENCE_ONLY"
+        ],
+        "selected_aspects": [
+          "noise"
+        ],
+        "selected_product_aliases": [
+          "PRODUCT_1"
+        ],
+        "workflow": "diagnosis"
+      }
+    }
+  ],
+  "fixture_sha256": "95e51902e03c1adc94afa0e27b6108f9eb205dea69bb4249a5b4ebde014d4ba8",
+  "reviewed_redacted": true,
+  "schema_version": "p6-replay-v1"
+}

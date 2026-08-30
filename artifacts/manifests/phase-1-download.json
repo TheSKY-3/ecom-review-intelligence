@@ -1,0 +1,29 @@
+{
+  "state": "PASSED",
+  "observed_at": "2026-08-02T16:07:30+00:00",
+  "dataset_snapshot_id": "44eface81cccdceb36c3fd61f93736267e63b84ba63902fac026659540518846",
+  "sources": [
+    {
+      "source_name": "reviews",
+      "url": "https://mcauleylab.ucsd.edu/public_datasets/data/amazon_2023/raw/review_categories/Appliances.jsonl.gz",
+      "filename": "Appliances.jsonl.gz",
+      "total_bytes": 270209794,
+      "sha256": "150f209befceaa6f837abc997065b2d251034bbbda19bebc4ad56dac779730c2",
+      "etag": "\"101b1302-62bda803121d9\"",
+      "last_modified": "Thu, 16 Jan 2025 22:41:53 GMT",
+      "resumed_from_bytes": 270209794,
+      "acquisition_method": "manual_direct_download"
+    },
+    {
+      "source_name": "metadata",
+      "url": "https://mcauleylab.ucsd.edu/public_datasets/data/amazon_2023/raw/meta_categories/meta_Appliances.jsonl.gz",
+      "filename": "meta_Appliances.jsonl.gz",
+      "total_bytes": 66406659,
+      "sha256": "5a94cffb9ec3be23e42b99643fcab5f48160b3c7a53835451c4457aadcdf9365",
+      "etag": "\"3f54903-62bd9ee3ef7b5\"",
+      "last_modified": "Thu, 16 Jan 2025 22:01:05 GMT",
+      "resumed_from_bytes": 66406659,
+      "acquisition_method": "manual_direct_download"
+    }
+  ]
+}

@@ -1,0 +1,14 @@
+{
+  "build_git_revision": "17feacbd14acbddc09879814294fbf9fe9e50f4d",
+  "citation_policy": "sha256 evidence-v1 with snapshot, reviews role, and one-based source line",
+  "content_sha256": "d8e2779e7853f3c8d2913fbbdf20835f6d8518a0da682120391e38c14ea791f8",
+  "contract_sha256": "180d1e8667c4ae0f7e459dca1bee658e7be7b03eafaea48c0da12ea62d44934e",
+  "data_boundary": "Aggregate-only; no local paths, product IDs, evidence IDs, or review text.",
+  "dataset_snapshot_id": "44eface81cccdceb36c3fd61f93736267e63b84ba63902fac026659540518846",
+  "fts_row_count": 136604,
+  "join_policy": "exact product-key equality only",
+  "product_count": 3278,
+  "review_count": 136604,
+  "state": "PASSED",
+  "verified_at": "2026-08-02T16:52:36+00:00"
+}

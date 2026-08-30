@@ -1,0 +1,63 @@
+{
+  "case_count": 15,
+  "category_counts": {
+    "clarification": 4,
+    "comparison": 6,
+    "diagnosis": 6,
+    "insufficient_no_answer": 4,
+    "safety_failure": 6,
+    "triage": 4
+  },
+  "config_sha256": "8c6ab5ef51680795b660e92021ed5a5a656b2ccbcd0c9b690313a06a38ddcd22",
+  "contract_sha256": "180d1e8667c4ae0f7e459dca1bee658e7be7b03eafaea48c0da12ea62d44934e",
+  "corpus_sha256": "37fe1c12ad65caed9b6509753e6162cdc16c73d32641292090004b82b49aafb0",
+  "dataset_snapshot_id": "44eface81cccdceb36c3fd61f93736267e63b84ba63902fac026659540518846",
+  "estimated_cost_usd": 0.0036002512,
+  "gates": {
+    "adversarial_containment": true,
+    "all_blocking_gates_passed": true,
+    "category_counts": true,
+    "citation_integrity": true,
+    "clarification_budget": true,
+    "code_identity_clean": true,
+    "identifier_integrity": true,
+    "model_budget": true,
+    "no_answer_integrity": true,
+    "provider_available": true,
+    "public_safety": true,
+    "run_count": true,
+    "tool_budget": true,
+    "workflow_and_status": true
+  },
+  "git_dirty": false,
+  "git_revision": "0d55ce284bac957d6eeff7040a53bc80e5afbebc",
+  "limitations": [
+    "Silver expectations are derived from deterministic local evidence.",
+    "This bounded run does not establish production traffic reliability.",
+    "Review evidence supports prioritization, not causal product conclusions."
+  ],
+  "pricing_observed_at": "2026-08-03",
+  "pricing_source": "https://api-docs.deepseek.com/quick_start/pricing",
+  "pricing_usd_per_million_tokens": {
+    "cache_hit_input": 0.0028,
+    "cache_miss_input": 0.14,
+    "output": 0.28
+  },
+  "provider_fingerprints": {
+    "a26a7955944dc5c60445bff77fac9c8e": 56
+  },
+  "provider_models": {
+    "deepseek-v4-flash": 56
+  },
+  "repetition_count": 2,
+  "run_count": 30,
+  "schema_version": "p6-live-agent-summary-v1",
+  "selection_sha256": "ed75969f20a5f52767cceffa0270f787bd7caa06dec37926b3ce105100c775bb",
+  "source_sha256": "fafe752c0ade85f33328ce12264be144b3271841dd36d6cd1eb578b11ba3a903",
+  "usage": {
+    "cache_hit_input_tokens": 59904,
+    "cache_miss_input_tokens": 3690,
+    "input_tokens": 63594,
+    "output_tokens": 10414
+  }
+}

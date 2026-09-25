@@ -19,8 +19,8 @@
     <circle cx="1168" cy="72" r="20" fill="#E8A33D"/>
     <path d="M 1159 72 L 1165 79 L 1178 64" stroke="#0B1220" stroke-width="4" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
   </g>
-  <text x="60" y="105" fill="#F2F5F9" font-size="46" font-weight="bold">电商评论证据 Agent</text>
+  <text x="60" y="105" fill="#F2F5F9" font-size="46" font-weight="bold">电商评论智能诊断 Agent</text>
   <text x="60" y="158" fill="#8FB8D8" font-size="25">从海量评论到可复核的运营判断（B 端决策原型）</text>
-  <text x="60" y="215" fill="#E8A33D" font-size="19" font-family="Cascadia Code, Consolas, monospace">136,604 条精确关联 · 真实模型 30/30 门通过 · 0 次注入成功</text>
+  <text x="60" y="215" fill="#E8A33D" font-size="19" font-family="Cascadia Code, Consolas, monospace">证据卡 · 竞品信号 · 问题分诊 · 本地受控验证</text>
   <text x="60" y="252" fill="#C6CFDC" font-size="17" font-family="Cascadia Code, Consolas, monospace">LangGraph · SQLite/FTS5 · Verifier · FastAPI Workbench</text>
 </svg>

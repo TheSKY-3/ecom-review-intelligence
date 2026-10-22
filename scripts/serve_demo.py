@@ -76,6 +76,15 @@ def _service_for(root: Path, mode: str, verdicts_path: Path | None) -> P6BackedW
             product_ids_by_code=_bundled_product_ids(store),
             verdict_path=verdicts_path or default_verdicts,
         )
+    private_store = root / "data" / "processed" / "ice_makers_evidence.sqlite"
+    if not private_store.is_file():
+        raise SystemExit(
+            "The private category store is missing: "
+            f"{private_store}\n"
+            "--mode local reads the full 165 MB store. Either build it first "
+            "(docs/deployment.md) or run the bundled subset instead: "
+            "`docker compose up demo` / `--mode bundled`."
+        )
     store, checkpoint, config, product_ids = load_local_agent_resources(root)
     return P6BackedWorkbenchService(
         store_path=store,

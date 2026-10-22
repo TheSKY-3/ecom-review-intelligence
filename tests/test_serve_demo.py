@@ -113,3 +113,12 @@ def test_a_bad_port_value_is_refused(monkeypatch) -> None:
     monkeypatch.setenv("PORT", "70000")
     with pytest.raises(SystemExit):
         serve_demo.resolve_port(_parse())
+
+
+def test_local_mode_explains_a_missing_private_store(tmp_path) -> None:
+    with pytest.raises(SystemExit) as error:
+        serve_demo._service_for(tmp_path, "local", None)
+
+    message = str(error.value)
+    assert "private category store is missing" in message
+    assert "--mode bundled" in message

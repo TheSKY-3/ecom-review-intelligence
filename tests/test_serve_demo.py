@@ -95,3 +95,21 @@ def test_wildcard_host_allows_subdomains_only() -> None:
         client.get("/health", headers={"host": "evil.hf.space.example.com"}).status_code
         == 400
     )
+
+
+def test_port_comes_from_the_platform_when_no_flag_is_given(monkeypatch) -> None:
+    monkeypatch.setenv("PORT", "10000")
+    assert serve_demo.resolve_port(_parse()) == 10000
+
+    monkeypatch.setenv("PORT", "7860")
+    assert serve_demo.resolve_port(_parse("--port", "9000")) == 9000
+
+
+def test_a_bad_port_value_is_refused(monkeypatch) -> None:
+    monkeypatch.setenv("PORT", "not-a-port")
+    with pytest.raises(SystemExit):
+        serve_demo.resolve_port(_parse())
+
+    monkeypatch.setenv("PORT", "70000")
+    with pytest.raises(SystemExit):
+        serve_demo.resolve_port(_parse())

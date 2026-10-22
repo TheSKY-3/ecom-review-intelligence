@@ -7,6 +7,11 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1
 
+# Hosted platforms answer on a name that is only known after deploy, so the common
+# suffixes are allowed by default. A foreign domain that resolves to this container
+# is still rejected, which is what the DNS-rebinding guard exists for.
+ENV WORKBENCH_ALLOWED_HOSTS="*.hf.space,*.onrender.com,*.fly.dev,*.koyeb.app"
+
 WORKDIR /app
 
 COPY pyproject.toml ./
@@ -27,9 +32,10 @@ EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
     CMD python -c "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=4).status == 200 else 1)"
 
+# No --port here: a platform that injects $PORT owns the port, and the default
+# inside serve_demo.py is 8000 for a plain `docker run`.
 CMD ["python", "scripts/serve_demo.py", \
      "--host", "0.0.0.0", \
      "--allow-non-loopback", \
-     "--port", "8000", \
      "--mode", "bundled"]
 

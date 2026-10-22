@@ -1,5 +1,6 @@
 services:
   demo:
+    # Ships the 3-product subset: download, build, open. No raw dataset, no key.
     build: .
     image: ecom-review-intelligence:demo
     ports:
@@ -7,7 +8,11 @@ services:
     environment:
       # The app rejects unknown Host headers (DNS-rebinding guard), so a host name
       # used to reach the container has to be named here.
-      WORKBENCH_ALLOWED_HOSTS: "localhost,127.0.0.1"
+      - WORKBENCH_ALLOWED_HOSTS=localhost,127.0.0.1
+      # Only the opt-in AI reading step calls the model; without a key the button
+      # stays disabled and everything else still works. The list form passes the
+      # host value through without spelling a key-shaped assignment here.
+      - DEEPSEEK_API_KEY
     restart: unless-stopped
 
   local:
@@ -27,9 +32,8 @@ services:
     ports:
       - "8001:8000"
     environment:
-      WORKBENCH_ALLOWED_HOSTS: "localhost,127.0.0.1"
-      # Optional: only the opt-in AI reading step calls the model.
-      DEEPSEEK_API_KEY: "${DEEPSEEK_API_KEY:-}"
+      - WORKBENCH_ALLOWED_HOSTS=localhost,127.0.0.1
+      - DEEPSEEK_API_KEY
     volumes:
       # Read-write on purpose: a run writes a checkpoint, and every human check
       # appends to the verdict log under data/processed/.

@@ -2,7 +2,7 @@
 
 ## Current rule
 
-DESIGN_DECISION: Amazon Reviews 2023 Appliances data is used locally for development and evaluation. The public repository may contain:
+DESIGN_DECISION (2026-10-22, owner-approved): Amazon Reviews 2023 Appliances data is used locally for development and evaluation, **with one bounded exception** — the published demo subset described below. The public repository may contain:
 
 - source code, schemas, and reproducible processing instructions;
 - synthetic fixtures and synthetic or manually authored demo cases;
@@ -21,6 +21,30 @@ It must not contain or transmit:
 
 Short review excerpts may be used only in local evidence output. Any public use requires a separate rights and disclosure review; until then, public demos use synthetic content or reviewed redacted replay.
 
+### The published demo subset (2026-10-22)
+
+The project owner decided to ship a bounded subset so that a downloaded copy runs
+without the 711 MB raw dataset. Its exact shape:
+
+| Property | Value | Note |
+| --- | --- | --- |
+| Products | 3 (the three the workbench uses) | not a category dump |
+| Reviews | 11,958 | 2.94 M characters of text |
+| File | `data/public/ice_makers_public.sqlite`, 10.9 MB | SQLite, no raw JSONL |
+| User identifiers | none | the schema has no `user_id` column |
+| Provenance | `store_meta` copied verbatim | snapshot id, contract hash, vocabularies |
+
+Conditions that make this acceptable, and that must stay true:
+
+- it is a fixed demo subset, not a data distribution channel; no bulk export
+  endpoint exists and none may be added;
+- the page states the source dataset, category, and sampling scope;
+- a contact route for take-down requests is published (`docs/data-use-and-publication.md`);
+- reviewer-level identifiers, images, and provider assets stay out;
+- the full category store and the raw gzip files remain local-only.
+
+Anything beyond this exception still needs a separate rights review.
+
 ## Local handling
 
 - Raw and derived record-level data stays under ignored local paths.
@@ -31,7 +55,7 @@ Short review excerpts may be used only in local evidence output. Any public use 
 
 ## Online demonstration boundary
 
-OPEN_QUESTION: The dataset provider has not supplied a simple data license equivalent to the processing code’s MIT license. Before a public demonstration, separately review whether displaying, caching, transmitting, or storing any review-derived excerpt is permitted.
+RESOLVED 2026-10-22: The dataset provider has not supplied a simple data license equivalent to the processing code’s MIT license. The owner reviewed the trade-off and approved the bounded subset above for public demonstration; the residual risk is recorded here rather than treated as cleared. Any expansion beyond this subset reopens the question.
 
 Until that review is resolved:
 

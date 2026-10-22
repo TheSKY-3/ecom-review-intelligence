@@ -1,5 +1,8 @@
 # Everything the image must not carry: raw/private data, local state, dev files.
 data/
+!data/public/
+!data/public/ice_makers_public.sqlite
+!data/public/state
 tmp/
 private/
 简历/

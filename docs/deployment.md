@@ -6,10 +6,35 @@
 
 | 模式 | 需要数据? | 需要密钥? | 用途 |
 |---|---|---|---|
-| `synthetic`(默认) | 不需要 | 不需要 | 演示页面与三条工作流,数据是编的,可公开部署 |
+| `bundled`(默认) | 不需要(随仓库自带) | 可选 | 真实评论的 3 商品子集:11,958 条,10.9 MB |
+| `synthetic` | 不需要 | 不需要 | 数据全是编的,用来看页面骨架 |
 | `local` | 需要 `data/processed/ice_makers_evidence.sqlite` | 可选(只在点「AI 深入分析」时用) | 真实 13.6 万条评论,只能在自己机器或受控环境里跑 |
 
 镜像默认跑 `synthetic`:它**不含任何评论数据**,所以可以把镜像推到任何地方。
+
+## 下载即用(不需要数据集,不需要密钥)
+
+仓库自带 `data/public/ice_makers_public.sqlite`:3 个商品、11,958 条真实评论、10.9 MB。克隆下来直接起:
+
+```sh
+docker compose up --build demo      # http://127.0.0.1:8000
+```
+
+或者不用容器:
+
+```sh
+python -m venv .venv
+.venv\Scripts\pip install -e ".[dev]"
+.venv\Scripts\python scripts/serve_demo.py --port 8000 --mode bundled
+```
+
+默认模式就是 `bundled`。页面上的三条工作流、证据卡、人工核对记录全部可用;
+只有「AI 深入分析」按钮需要密钥——设置环境变量 `DEEPSEEK_API_KEY` 后重启即可,
+不设置时按钮置灰,其它功能不受影响。
+
+这份子集是**固定演示子集,不是数据分发通道**:没有批量导出接口,也不会加。
+出处、类目与抽样范围写在页面上,删除请求的渠道见 `docs/data-use-and-publication.md`。
+完整类目库(165 MB)与原始 gzip 仍只在本机。
 
 ## 起容器
 

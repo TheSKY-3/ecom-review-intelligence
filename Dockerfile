@@ -1,9 +1,6 @@
-# Demo image: synthetic data only, no review store, no API key needed.
-#
-# The default command serves the synthetic workbench so the page and the three
-# workflows are clickable on any host. Real reviews stay outside the image: the
-# `local` profile in docker-compose.yml mounts them read-write because runs write
-# checkpoints and human check records back into data/processed/.
+# Download-and-run image: ships the three-product subset so the workbench shows
+# real reviews without the raw 711 MB dataset. The full category store stays out
+# of the image; the `local` compose profile mounts it instead.
 FROM python:3.12-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
@@ -18,10 +15,11 @@ RUN pip install --no-cache-dir .
 
 COPY scripts ./scripts
 COPY artifacts/manifests ./artifacts/manifests
+COPY data/public/ice_makers_public.sqlite ./data/public/ice_makers_public.sqlite
 
 RUN useradd --create-home --uid 10001 workbench \
-    && mkdir -p /app/data /app/state \
-    && chown -R workbench:workbench /app
+    && mkdir -p /app/data/public/state \
+    && chown -R workbench:workbench /app/data
 USER workbench
 
 EXPOSE 8000
@@ -33,4 +31,5 @@ CMD ["python", "scripts/serve_demo.py", \
      "--host", "0.0.0.0", \
      "--allow-non-loopback", \
      "--port", "8000", \
-     "--mode", "synthetic"]
+     "--mode", "bundled"]
+

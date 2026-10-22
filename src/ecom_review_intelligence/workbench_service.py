@@ -471,6 +471,7 @@ class P6BackedWorkbenchService(SyntheticWorkbenchService):
         model_labels_path: Path | None = None,
         verdict_path: Path | None = None,
         insight_gateway_factory: Callable[[], InsightGateway | None] | None = None,
+        user_insight_gateway_factory: Callable[[str], InsightGateway | None] | None = None,
         uuid_factory: Callable[[], UUID | str] = uuid4,
     ) -> None:
         super().__init__(uuid_factory=uuid_factory)
@@ -492,6 +493,9 @@ class P6BackedWorkbenchService(SyntheticWorkbenchService):
         self._model_labels: dict[str, dict[str, str]] | None = None
         self._insight_gateway_factory = insight_gateway_factory or (
             lambda: build_insight_gateway(self._config)
+        )
+        self._user_insight_gateway_factory = user_insight_gateway_factory or (
+            lambda key: build_insight_gateway(self._config, api_key=key)
         )
         self._insight_gateway: InsightGateway | None = None
         self._insight_resolved = False
@@ -822,9 +826,14 @@ class P6BackedWorkbenchService(SyntheticWorkbenchService):
         )
 
     def insight_available(self) -> bool:
-        """The opt-in step is offered only for local runs with a configured key."""
+        """True when the deployment itself carries a key for the opt-in step."""
 
         return self.mode == "local" and self._insight_gateway_or_none() is not None
+
+    def insight_byo_available(self) -> bool:
+        """True when a visitor may bring their own key for the opt-in step."""
+
+        return self.mode == "local"
 
     def _insight_gateway_or_none(self) -> InsightGateway | None:
         if not self._insight_resolved:
@@ -835,14 +844,26 @@ class P6BackedWorkbenchService(SyntheticWorkbenchService):
             self._insight_resolved = True
         return self._insight_gateway
 
-    def run_insight(self, run_token: str, card_alias: str) -> InsightView:
+    def _insight_gateway_for(self, user_key: str | None) -> InsightGateway | None:
+        """Use a visitor's key for this call only; never keep or cache it."""
+
+        if user_key is None:
+            return self._insight_gateway_or_none()
+        try:
+            return self._user_insight_gateway_factory(user_key)
+        except Exception:  # noqa: BLE001 - an unusable visitor key behaves like no key
+            return None
+
+    def run_insight(
+        self, run_token: str, card_alias: str, *, user_key: str | None = None
+    ) -> InsightView:
         """Read one card's sampled reviews once, then check every claim against them."""
 
         cached = self._insight_cache.get((run_token, card_alias))
         if cached is not None:
             return cached
         aspect, product_label, reviews, matched_count = self._insight_inputs(run_token, card_alias)
-        gateway = self._insight_gateway_or_none()
+        gateway = self._insight_gateway_for(user_key)
         if gateway is None:
             return InsightView(
                 run_token=run_token,

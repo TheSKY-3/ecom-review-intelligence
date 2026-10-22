@@ -56,6 +56,7 @@ const state = {
   runToken: null,
   productLabels: {},
   insightAvailable: document.querySelector("main")?.dataset.insightAvailable === "true",
+  insightByo: document.querySelector("main")?.dataset.insightByo === "true",
 };
 const form = document.querySelector("#run-form");
 const formError = document.querySelector("#form-error");
@@ -382,19 +383,80 @@ function renderInsight(payload) {
   return box;
 }
 
-async function loadInsight(runToken, cardAlias, container, button) {
+const INSIGHT_KEY_STORAGE = "wb-insight-key";
+
+function readInsightKey() {
+  try {
+    return sessionStorage.getItem(INSIGHT_KEY_STORAGE) || "";
+  } catch (error) {
+    return "";
+  }
+}
+
+function writeInsightKey(value) {
+  try {
+    if (value) {
+      sessionStorage.setItem(INSIGHT_KEY_STORAGE, value);
+    } else {
+      sessionStorage.removeItem(INSIGHT_KEY_STORAGE);
+    }
+  } catch (error) {
+    /* storage unavailable: the key then only lives for this call */
+  }
+}
+
+function openInsightKeyPanel(panel, run) {
+  panel.replaceChildren();
+  const label = textElement("p", "insight-key-label", "用你自己的 DeepSeek API Key 跑这一步");
+  const input = document.createElement("input");
+  input.type = "password";
+  input.autocomplete = "off";
+  input.spellcheck = false;
+  input.className = "insight-key-input";
+  input.placeholder = "sk-...";
+  const submit = textElement("button", "insight-key-submit", "用这个密钥分析");
+  submit.type = "button";
+  const note = textElement(
+    "p",
+    "insight-key-note",
+    "密钥只存在这个标签页里,关掉即清除;它只用于这次分析,不会写进日志或磁盘。",
+  );
+  submit.addEventListener("click", () => {
+    const value = input.value.trim();
+    if (!value) {
+      input.focus();
+      return;
+    }
+    writeInsightKey(value);
+    panel.hidden = true;
+    run();
+  });
+  panel.append(label, input, submit, note);
+  panel.hidden = false;
+  input.focus();
+}
+
+async function loadInsight(runToken, cardAlias, container, button, userKey = "") {
   button.disabled = true;
   button.textContent = "分析中…";
+  const headers = { "Content-Type": "application/json" };
+  if (userKey) {
+    headers["X-Insight-Key"] = userKey;
+  }
   try {
     const payload = await requestJson("/api/v1/insights", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers,
       body: JSON.stringify({ run_token: runToken, card_alias: cardAlias }),
     });
     container.replaceChildren(renderInsight(payload));
     container.hidden = false;
     if (payload.status === "READY") {
       button.textContent = "AI 分析结果 ▾";
+    } else if (payload.reason === "MODEL_NOT_CONFIGURED" && !state.insightAvailable) {
+      writeInsightKey("");
+      button.textContent = "AI 深入分析 ▸";
+      button.disabled = false;
     } else {
       button.textContent = "再试一次 ▸";
       button.disabled = false;
@@ -402,7 +464,7 @@ async function loadInsight(runToken, cardAlias, container, button) {
   } catch (error) {
     container.replaceChildren(textElement("p", "insight-degraded", error.message));
     container.hidden = false;
-    button.textContent = "AI 深入分析 ▸";
+    button.textContent = "再试一次 ▸";
     button.disabled = false;
   }
 }
@@ -548,16 +610,37 @@ function renderEvidence(evidence) {
         }
       });
       card.append(toggle, detailBox);
-      if (state.insightAvailable) {
+      if (state.insightAvailable || state.insightByo) {
         const insightToggle = textElement("button", "detail-toggle insight-toggle", "AI 深入分析 ▸");
         insightToggle.type = "button";
         const insightBox = document.createElement("div");
         insightBox.className = "insight-output";
         insightBox.hidden = true;
-        insightToggle.addEventListener("click", () =>
-          loadInsight(state.runToken, item.evidence_alias, insightBox, insightToggle),
-        );
-        card.append(insightToggle, insightBox);
+        const keyPanel = document.createElement("div");
+        keyPanel.className = "insight-key";
+        keyPanel.hidden = true;
+        insightToggle.addEventListener("click", () => {
+          if (state.insightAvailable || readInsightKey()) {
+            loadInsight(
+              state.runToken,
+              item.evidence_alias,
+              insightBox,
+              insightToggle,
+              readInsightKey(),
+            );
+            return;
+          }
+          openInsightKeyPanel(keyPanel, () =>
+            loadInsight(
+              state.runToken,
+              item.evidence_alias,
+              insightBox,
+              insightToggle,
+              readInsightKey(),
+            ),
+          );
+        });
+        card.append(insightToggle, keyPanel, insightBox);
       } else {
         const unavailable = textElement(
           "button",

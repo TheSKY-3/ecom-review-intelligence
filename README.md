@@ -83,7 +83,7 @@ python -m venv .venv
 .\.venv\Scripts\python.exe scripts/serve_demo.py --port 8000 --mode bundled
 ```
 
-三条工作流、证据卡、人工核对记录开箱可用。只有「AI 深入分析」需要密钥：设置 `DEEPSEEK_API_KEY` 后重启即可，不设置时按钮置灰，其余功能不受影响。
+三条工作流、证据卡、人工核对记录开箱可用。只有「AI 深入分析」需要密钥，两种方式都行：部署方设置 `DEEPSEEK_API_KEY`；或者**让访问者自己填**——页面会请他粘贴自己的 DeepSeek key，只存在当前标签页、关闭即清，只为那一次调用使用，不落盘、不进日志、不回显。
 
 ## 复现
 

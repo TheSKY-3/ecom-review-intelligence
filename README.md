@@ -13,6 +13,18 @@
 
 类目运营要回答「这款制冰机的噪音是不是真问题」「和竞品比质量谁占优」「先核查哪个投诉」，得跨几千条评论拼证据。Excel 数得了星级，聊天模型给得出流畅答案，但两者都说不清**结论基于哪几条评论、能不能回查**。本系统把评论整理成**带引用、带方向、带强度、可点开原文复核**的证据卡，并诚实标注"证据不足"。
 
+## 也可以是一个双击就能开的桌面程序
+
+Windows 用户可以直接下载 Release 里的 `EComReviewIntelligence.exe`（40 MB 单文件，内置 3 商品数据子集）：
+
+- 不需要装 Python、不需要命令行、不需要网络、不需要 API key；
+- 双击后是一个原生窗口，界面与浏览器版一致；
+- checkpoint 与人工核对记录写在 `%LOCALAPPDATA%\EComReviewIntelligence\`；
+- 点「AI 深入分析」时仍请你填自己的 key，密钥只留在当前窗口内存里。
+
+源码构建：`powershell -ExecutionPolicy Bypass -File scripts/build_desktop_app.ps1 -OneFile`。
+仅 Windows（走系统 WebView2），未做代码签名，可能提示“未知发布者”。
+
 ## 界面
 
 `docker compose up --build demo` 起来的页面（合成模式，数据是编的）：

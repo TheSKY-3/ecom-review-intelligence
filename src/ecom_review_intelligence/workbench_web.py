@@ -175,11 +175,18 @@ def create_workbench_app(
     } | {
         name.strip().casefold() for name in extra_allowed_hosts if name.strip()
     }
+    allowed_suffixes = tuple(
+        name[1:].casefold() for name in allowed_hosts if name.startswith("*")
+    )
 
     @app.middleware("http")
     async def security_headers(request: Request, call_next):
         hostname = request.headers.get("host", "").rsplit(":", 1)[0].casefold()
-        if hostname not in allowed_hosts:
+        permitted = hostname in allowed_hosts or any(
+            hostname.endswith(suffix) and hostname != suffix.lstrip(".")
+            for suffix in allowed_suffixes
+        )
+        if not permitted:
             response = _error(400, "INVALID_HOST", "Host is not allowed.")
         else:
             response = await call_next(request)

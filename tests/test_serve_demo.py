@@ -80,3 +80,18 @@ def test_synthetic_mode_starts_without_any_review_data(tmp_path: Path) -> None:
 
     assert run.status_code == 201
     assert run.json()["evidence"]
+
+
+def test_wildcard_host_allows_subdomains_only() -> None:
+    app = create_workbench_app(
+        SyntheticWorkbenchService(), extra_allowed_hosts=("*.hf.space",)
+    )
+    client = TestClient(app)
+
+    assert client.get("/health", headers={"host": "demo-abc.hf.space"}).status_code == 200
+    assert client.get("/health", headers={"host": "hf.space"}).status_code == 400
+    assert client.get("/health", headers={"host": "attacker-hf.space"}).status_code == 400
+    assert (
+        client.get("/health", headers={"host": "evil.hf.space.example.com"}).status_code
+        == 400
+    )

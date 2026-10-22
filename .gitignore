@@ -56,4 +56,9 @@ docs/explained/assets/
 docs/explained/main.pdf
 docs/explained/main.aux
 docs/explained/main.log
-tmp/pdfs/
+
+# The published demo subset ships with the project; its runtime state does not.
+!data/public/
+data/public/*
+!data/public/ice_makers_public.sqlite
+data/public/state/

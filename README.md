@@ -67,6 +67,24 @@
 - **检索负结果**：冻结案例对比后 FTS5/BM25 没有显示独立优势，项目没有为"技术栈好看"强行上向量库——同时记录该结论的循环偏向边界。技术选型服务于问题，而不是简历。
 - **分层评测**：检索、Agent 离线、真实模型、工作台各有独立 Gate 与"能证明什么/不能证明什么"清单——防止一个绿色对勾掩盖所有问题。
 
+## 下载即用（不需要数据集，不需要密钥）
+
+仓库自带 `data/public/ice_makers_public.sqlite`：3 个商品、11,958 条真实评论、10.9 MB。克隆后一条命令：
+
+```powershell
+docker compose up --build demo      # http://127.0.0.1:8000
+```
+
+不用容器也可以：
+
+```powershell
+python -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -e ".[dev]"
+.\.venv\Scripts\python.exe scripts/serve_demo.py --port 8000 --mode bundled
+```
+
+三条工作流、证据卡、人工核对记录开箱可用。只有「AI 深入分析」需要密钥：设置 `DEEPSEEK_API_KEY` 后重启即可，不设置时按钮置灰，其余功能不受影响。
+
 ## 复现
 
 ```powershell
@@ -95,7 +113,7 @@ docker compose --profile local up --build local   # http://127.0.0.1:8001
 - P0–P6 工程门已通过；P7 目标运营用户的结构化试用**进行中**——工程 PASS 不代替真人试用。
 - 不声称已上线、已节省工时或已改善业务指标；评测证明的是有界工程行为，不是生产 SLA。
 - 不根据评论推断真实缺陷率、销量或利润；不回答"该买哪个"。
-- 评论文本、记录级标识、原始数据不入库（详见 [docs/data-use-and-publication.md](docs/data-use-and-publication.md)）。
+- 仓库自带一份**固定的 3 商品演示子集**（11,958 条真实评论，10.9 MB），用于"下载即可运行"；它是演示样本，不是数据分发通道，仓库里没有批量导出接口，也不会加。完整类目库（165 MB）与原始 gzip 不在仓库中（边界详见 [docs/data-use-and-publication.md](docs/data-use-and-publication.md)）。
 
 ## License
 

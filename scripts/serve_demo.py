@@ -16,6 +16,7 @@ Default deployment is `--mode synthetic`, which carries no review data at all.
 from __future__ import annotations
 
 import os
+import sqlite3
 import sys
 from argparse import ArgumentParser, Namespace
 from collections.abc import Sequence
@@ -23,11 +24,66 @@ from pathlib import Path
 
 import uvicorn
 
+from ecom_review_intelligence.agent_cli import _read_config, _validate_store_lineage
 from ecom_review_intelligence.workbench_resources import load_local_agent_resources
 from ecom_review_intelligence.workbench_service import P6BackedWorkbenchService
 from ecom_review_intelligence.workbench_web import create_workbench_app
 
 _LOOPBACK = {"127.0.0.1", "localhost", "::1"}
+_CODES = ("frostline", "northstar", "harbor")
+
+
+def _bundled_paths(root: Path) -> tuple[Path, Path, Path]:
+    public = root / "data" / "public"
+    return (
+        public / "ice_makers_public.sqlite",
+        public / "state" / "checkpoints.sqlite",
+        public / "state" / "verdicts.jsonl",
+    )
+
+
+def _bundled_product_ids(store: Path) -> dict[str, str]:
+    with sqlite3.connect(f"file:{store.as_posix()}?mode=ro", uri=True) as connection:
+        rows = connection.execute(
+            """SELECT p.parent_asin FROM products p
+               JOIN reviews r ON r.parent_asin = p.parent_asin
+               GROUP BY p.parent_asin
+               ORDER BY count(r.evidence_id) DESC, p.parent_asin
+               LIMIT 3"""
+        ).fetchall()
+    if len(rows) < 3:
+        raise SystemExit("The bundled store needs three products; rebuild it with build_public_subset.py.")
+    return {code: row[0] for code, row in zip(_CODES, rows, strict=True)}
+
+
+def _service_for(root: Path, mode: str, verdicts_path: Path | None) -> P6BackedWorkbenchService:
+    config_path = root / "artifacts" / "manifests" / "phase-6-agent-config.json"
+    if mode == "bundled":
+        store, checkpoint, default_verdicts = _bundled_paths(root)
+        if not store.is_file():
+            raise SystemExit(
+                f"The bundled store is missing: {store}\n"
+                "Rebuild it from a local category store with "
+                "`python scripts/build_public_subset.py --project-root .`."
+            )
+        config = _read_config(config_path)
+        _validate_store_lineage(store, config)
+        checkpoint.parent.mkdir(parents=True, exist_ok=True)
+        return P6BackedWorkbenchService(
+            store_path=store,
+            checkpoint_path=checkpoint,
+            config=config,
+            product_ids_by_code=_bundled_product_ids(store),
+            verdict_path=verdicts_path or default_verdicts,
+        )
+    store, checkpoint, config, product_ids = load_local_agent_resources(root)
+    return P6BackedWorkbenchService(
+        store_path=store,
+        checkpoint_path=checkpoint,
+        config=config,
+        product_ids_by_code=product_ids,
+        verdict_path=verdicts_path,
+    )
 
 
 def build_parser() -> ArgumentParser:
@@ -37,7 +93,7 @@ def build_parser() -> ArgumentParser:
     )
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8000)
-    parser.add_argument("--mode", choices=("synthetic", "local"), default="synthetic")
+    parser.add_argument("--mode", choices=("synthetic", "bundled", "local"), default="bundled")
     parser.add_argument("--project-root", type=Path, default=Path.cwd())
     parser.add_argument(
         "--allow-non-loopback",
@@ -53,7 +109,7 @@ def build_parser() -> ArgumentParser:
     parser.add_argument(
         "--acknowledge-local-data",
         action="store_true",
-        help="Required with --mode local: it reads the private review store.",
+        help="Required with --mode local: it reads the private category store.",
     )
     parser.add_argument(
         "--verdicts-path",
@@ -81,24 +137,15 @@ def validate(args: Namespace) -> None:
     if not 1 <= args.port <= 65535:
         raise SystemExit("Port is outside the allowed range.")
     if args.mode == "local" and not args.acknowledge_local_data:
-        raise SystemExit("--mode local reads the private review store; pass --acknowledge-local-data.")
+        raise SystemExit("--mode local reads the private category store; pass --acknowledge-local-data.")
 
 
 def main(argv: Sequence[str] | None = None, *, server_runner=uvicorn.run) -> int:
     args = build_parser().parse_args(argv)
     validate(args)
-    if args.mode == "local":
-        root = Path(args.project_root).resolve()
-        store, checkpoint, config, product_ids = load_local_agent_resources(root)
-        service = P6BackedWorkbenchService(
-            store_path=store,
-            checkpoint_path=checkpoint,
-            config=config,
-            product_ids_by_code=product_ids,
-            verdict_path=args.verdicts_path,
-        )
-    else:
-        service = None
+    service = None if args.mode == "synthetic" else _service_for(
+        Path(args.project_root).resolve(), args.mode, args.verdicts_path
+    )
     app = create_workbench_app(service, extra_allowed_hosts=resolve_allowed_hosts(args))
     server_runner(app, host=args.host, port=args.port, log_level="info")
     return 0

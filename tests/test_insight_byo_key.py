@@ -17,7 +17,7 @@ from ecom_review_intelligence.workbench_web import (
     create_workbench_app,
 )
 
-_VISITOR_KEY = "sk-visitor-key-0123456789abcdef"
+_VISITOR_KEY = "test-visitor-key-0123456789abcdef"
 _CONFIG = {"model": "deepseek-v4-flash", "base_url": "https://api.deepseek.com"}
 
 

@@ -319,7 +319,7 @@ function renderInsight(payload) {
         insightStatusCopy[payload.reason] ||
           (failed
             ? "模型这次的输出没有通过引用校验,整段丢弃,页面上不展示任何内容;可以再点一次重试。"
-            : "AI 结果未能生成;可以再点一次重试。"),
+            : `AI 结果未能生成(${payload.reason || "UNKNOWN"});可以再点一次重试。`),
       ),
     );
     if (failed) {

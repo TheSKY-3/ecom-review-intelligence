@@ -7,11 +7,23 @@
 **把海量商品评论整理成"可回查、可复核"的运营证据，而不是一段无法溯源的总结。**
 受约束 Agent + 本地证据引擎 + 逐字段校验——编造、串商品、越权查询在结构上不可能发生。
 
-![status](https://img.shields.io/badge/%E5%B7%A5%E7%A8%8B%E9%97%A8%20P0-P6-PASSED-2F6B4F) ![live-gate](https://img.shields.io/badge/%E7%9C%9F%E5%AE%9E%E6%A8%A1%E5%9E%8B%E9%97%A8-30%2F30%20%E9%80%9A%E8%BF%87-A0650A) ![security](https://img.shields.io/badge/%E6%B3%A8%E5%85%A5%2F%E8%B6%8A%E6%9D%83-0%20%E6%88%90%E5%8A%9F-2F6B4F) ![python](https://img.shields.io/badge/Python-3.12-3E6B96) ![license](https://img.shields.io/badge/license-MIT-3E6B96)
+![status](https://img.shields.io/badge/%E5%B7%A5%E7%A8%8B%E9%97%A8%20P0-P6-PASSED-2F6B4F) ![live-gate](https://img.shields.io/badge/%E7%9C%9F%E5%AE%9E%E6%A8%A1%E5%9E%8B%E9%97%A8-30%2F30%20%E9%80%9A%E8%BF%87-A0650A) ![security](https://img.shields.io/badge/%E6%B3%A8%E5%85%A5%2F%E8%B6%8A%E6%9D%83-0%20%E6%88%90%E5%8A%9F-2F6B4F) ![clone](https://img.shields.io/badge/%E5%85%8B%E9%9A%86%E5%8D%B3%E8%B7%91-%E5%86%85%E7%BD%AE%203%20%E5%95%86%E5%93%81%E5%AD%90%E9%9B%86-2F6B4F) ![tests](https://img.shields.io/badge/tests-388%20passed-2F6B4F) ![python](https://img.shields.io/badge/Python-3.12-3E6B96) ![license](https://img.shields.io/badge/license-MIT-3E6B96)
 
 ## 一句话读懂
 
 类目运营要回答「这款制冰机的噪音是不是真问题」「和竞品比质量谁占优」「先核查哪个投诉」，得跨几千条评论拼证据。Excel 数得了星级，聊天模型给得出流畅答案，但两者都说不清**结论基于哪几条评论、能不能回查**。本系统把评论整理成**带引用、带方向、带强度、可点开原文复核**的证据卡，并诚实标注"证据不足"。
+
+## 界面
+
+`docker compose up --build demo` 起来的页面（合成模式，数据是编的）：
+
+![workbench overview](docs/assets/p7-workbench-overview.png)
+
+「AI 深入分析」是唯一会把评论原文发给模型的步骤。本站不配置密钥时，页面会请访问者填自己的 key——密钥只存在当前标签页，关闭即清，只为那一次调用使用：
+
+![visitor key panel](docs/assets/p7-workbench-ai-key.png)
+
+两张图都由 `scripts/capture_workbench_screenshots.cjs` 用真实 Chrome 截取（CDP 驱动，无 playwright 依赖），脚本在保存前会拒绝任何含路径、商品编号或哈希形状的页面文本。
 
 ## 为什么可信：三道防编造设计 + 一道评测门
 

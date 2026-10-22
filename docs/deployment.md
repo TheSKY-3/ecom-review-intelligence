@@ -36,6 +36,15 @@ python -m venv .venv
 出处、类目与抽样范围写在页面上,删除请求的渠道见 `docs/data-use-and-publication.md`。
 完整类目库(165 MB)与原始 gzip 仍只在本机。
 
+## Render(免费层,一条 Blueprint 部署)
+
+仓库根带了 
+ender.yaml:Render → **New → Blueprint** → 选本仓库 → **Apply** 即可,它会创建免费的 Docker Web Service,健康检查打 /health,并自动带上 WORKBENCH_ALLOWED_HOSTS=*.onrender.com。
+
+- 免费实例 15 分钟无访问会休眠,首次打开约 30 秒冷启动;
+- 不配置 DEEPSEEK_API_KEY 时,页面请访问者填自己的 key(见下一节);
+- Render 通过环境变量 PORT 指定端口,serve_demo.py 已支持。
+
 ## 访问者自带密钥(部署方不花一分钱)
 
 部署时可以不配置 `DEEPSEEK_API_KEY`。这样只有「AI 深入分析」需要密钥:

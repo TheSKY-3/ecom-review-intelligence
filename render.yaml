@@ -1,0 +1,17 @@
+services:
+  - type: web
+    name: ecom-review-intelligence
+    runtime: docker
+    plan: free
+    region: singapore
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      # Render answers on <name>.onrender.com, which the DNS-rebinding guard has to
+      # be told about. The image already allows this suffix by default; stating it
+      # here keeps the intent visible in the blueprint.
+      - key: WORKBENCH_ALLOWED_HOSTS
+        value: "*.onrender.com"
+      # Optional: add DEEPSEEK_API_KEY in the dashboard to use one shared key.
+      # Without it the page asks each visitor for their own key instead.

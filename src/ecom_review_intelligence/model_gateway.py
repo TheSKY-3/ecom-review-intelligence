@@ -567,16 +567,42 @@ def _openai_client(**kwargs: Any) -> Any:
     return OpenAI(**kwargs)
 
 
+_USER_KEY_SHAPE = re.compile(r"[A-Za-z0-9_.\-]{8,200}")
+
+
+def normalize_request_key(value: str | None) -> str | None:
+    """Accept a visitor-supplied key only in a shape an API key can have.
+
+    Nothing is logged here: an invalid key raises with a fixed message so the
+    caller can answer without echoing what the visitor sent.
+    """
+
+    if value is None:
+        return None
+    key = value.strip()
+    if not key:
+        return None
+    if not _USER_KEY_SHAPE.fullmatch(key):
+        raise ValueError("User-supplied API key has an invalid shape.")
+    return key
+
+
 def build_insight_gateway(
     config: Mapping[str, Any],
     *,
     client_factory: Callable[..., Any] | None = None,
     environment: Mapping[str, str] | None = None,
+    api_key: str | None = None,
 ) -> DeepSeekInsightGateway | None:
-    """Return a gateway only when a key is configured; otherwise the step is hidden."""
+    """Return a gateway only when a key is available; otherwise the step is off.
+
+    ``api_key`` is a visitor-supplied key for one request. It is used for that
+    call and nothing else: callers must not keep the gateway, log it, or write it
+    anywhere.
+    """
 
     env = os.environ if environment is None else environment
-    key = (env.get("DEEPSEEK_API_KEY") or "").strip()
+    key = (api_key or "").strip() or (env.get("DEEPSEEK_API_KEY") or "").strip()
     if not key:
         return None
     factory = client_factory or _openai_client

@@ -3,8 +3,11 @@
 from __future__ import annotations
 
 import re
+from collections import deque
 from collections.abc import Mapping, Sequence
 from pathlib import Path
+from threading import Lock
+from time import perf_counter
 from typing import Any
 
 from fastapi import FastAPI, Request, Response
@@ -13,6 +16,7 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
+from ecom_review_intelligence.model_gateway import normalize_request_key
 from ecom_review_intelligence.workbench_contracts import (
     EvidenceDetail,
     InsightRequest,
@@ -37,6 +41,42 @@ from ecom_review_intelligence.workbench_service import (
 
 def _error(status_code: int, code: str, message: str) -> JSONResponse:
     return JSONResponse(status_code=status_code, content={"error": {"code": code, "message": message}})
+
+
+INSIGHT_KEY_HEADER = "x-insight-key"
+
+
+class InsightRateLimiter:
+    """Bounds abuse of the one endpoint that spends money.
+
+    It is deliberately small and in-process: this app has no accounts and no
+    shared store, so a deployment that needs real quotas should rate-limit at its
+    proxy instead. The limit protects a public demo from a hot loop, nothing more.
+    """
+
+    def __init__(
+        self,
+        *,
+        max_calls: int = 10,
+        window_seconds: float = 600.0,
+        clock: Any = perf_counter,
+    ) -> None:
+        self._max_calls = max(1, int(max_calls))
+        self._window = float(window_seconds)
+        self._clock = clock
+        self._hits: dict[str, deque[float]] = {}
+        self._lock = Lock()
+
+    def allow(self, key: str) -> bool:
+        now = self._clock()
+        with self._lock:
+            hits = self._hits.setdefault(key, deque())
+            while hits and now - hits[0] > self._window:
+                hits.popleft()
+            if len(hits) >= self._max_calls:
+                return False
+            hits.append(now)
+            return True
 
 
 def assert_response_keys_safe(value: Any) -> None:
@@ -118,12 +158,16 @@ def create_workbench_app(
     service: WorkbenchService | None = None,
     *,
     extra_allowed_hosts: Sequence[str] = (),
+    insight_rate_limit: tuple[int, float] = (10, 600.0),
 ) -> FastAPI:
     app = FastAPI(title="ECom Review Intelligence Workbench", docs_url=None, redoc_url=None)
     backend = service or SyntheticWorkbenchService()
     package_root = Path(__file__).resolve().parent
     templates = Jinja2Templates(directory=package_root / "templates")
     app.mount("/static", StaticFiles(directory=package_root / "static"), name="static")
+    limiter = InsightRateLimiter(
+        max_calls=insight_rate_limit[0], window_seconds=insight_rate_limit[1]
+    )
     allowed_hosts = {
         "127.0.0.1",
         "localhost",
@@ -211,6 +255,11 @@ def create_workbench_app(
             if hasattr(backend, "insight_available")
             else False
         )
+        insight_byo = (
+            bool(backend.insight_byo_available())
+            if hasattr(backend, "insight_byo_available")
+            else False
+        )
         return templates.TemplateResponse(
             request=request,
             name="workbench.html",
@@ -218,6 +267,7 @@ def create_workbench_app(
                 "mode": backend.mode,
                 "products": product_options,
                 "insight_available": insight_available,
+                "insight_byo": insight_byo,
             },
         )
 
@@ -252,10 +302,31 @@ def create_workbench_app(
         return detail
 
     @app.post("/api/v1/insights", response_model=InsightView)
-    def create_insight(request: InsightRequest) -> InsightView:
-        if not getattr(backend, "insight_available", lambda: False)():
+    def create_insight(request: InsightRequest, http_request: Request) -> InsightView:
+        if not hasattr(backend, "run_insight"):
             raise WorkbenchInsightUnavailable()
-        view = backend.run_insight(request.run_token, request.card_alias)
+        server_key = bool(getattr(backend, "insight_available", lambda: False)())
+        byo = bool(getattr(backend, "insight_byo_available", lambda: False)())
+        try:
+            user_key = normalize_request_key(http_request.headers.get(INSIGHT_KEY_HEADER))
+        except ValueError as error:
+            raise WorkbenchInputError("The supplied API key is not usable.") from error
+        if not server_key and user_key is None and not byo:
+            raise WorkbenchInsightUnavailable()
+        client = http_request.client.host if http_request.client else "unknown"
+        if not limiter.allow(client):
+            return JSONResponse(
+                status_code=429,
+                content={
+                    "error": {
+                        "code": "RATE_LIMITED",
+                        "message": "Too many analysis requests; try again later.",
+                    }
+                },
+            )
+        view = backend.run_insight(
+            request.run_token, request.card_alias, user_key=user_key
+        )
         assert_public_workbench_safe(view.model_dump(mode="json"))
         return view
 

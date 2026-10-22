@@ -322,6 +322,11 @@ kbd {
 .review-strip button[aria-pressed="true"].review-rejected { color: var(--stamp); background: color-mix(in srgb, var(--stamp) 12%, transparent); }
 .review-progress { margin: 10px 0 0; color: var(--muted); font: 700 10px Consolas, monospace; }
 .verdict-notice { margin: 6px 0 0; color: var(--stamp); font: 700 10px Consolas, monospace; }
+.insight-key { margin-top: 8px; padding: 10px 12px; border: 1px dashed var(--line); border-radius: 4px; background: var(--paper); }
+.insight-key-label { margin: 0 0 7px; font: 700 11px/1.4 inherit; color: var(--ink); }
+.insight-key-input { width: 100%; box-sizing: border-box; padding: 7px 9px; font: 12px Consolas, monospace; border: 1px solid var(--line); border-radius: 3px; background: var(--surface); color: var(--ink); }
+.insight-key-submit { margin-top: 8px; padding: 6px 12px; font: 700 11px inherit; border: 1px solid var(--ink); border-radius: 3px; background: var(--ink); color: var(--surface); cursor: pointer; }
+.insight-key-note { margin: 8px 0 0; font: 10px/1.6 inherit; color: var(--muted); }
 
 .clarification-choices { display: grid; gap: 8px; }
 .clarification-choices button {

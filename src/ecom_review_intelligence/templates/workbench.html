@@ -5,9 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="color-scheme" content="light dark">
     <title>ECom Review Intelligence</title>
-    <script src="/static/workbench-theme.js?v=20261022c"></script>
-    <link rel="stylesheet" href="/static/workbench.css?v=20261022c">
-    <script src="/static/workbench.js?v=20261022c" defer></script>
+    <script src="/static/workbench-theme.js?v=20261022d"></script>
+    <link rel="stylesheet" href="/static/workbench.css?v=20261022d">
+    <script src="/static/workbench.js?v=20261022d" defer></script>
   </head>
   <body>
     <header class="topbar">
@@ -26,7 +26,7 @@
       </div>
     </header>
 
-    <main class="workspace" data-insight-available="{{ 'true' if insight_available else 'false' }}">
+    <main class="workspace" data-insight-available="{{ 'true' if insight_available else 'false' }}" data-insight-byo="{{ 'true' if insight_byo else 'false' }}">
       <nav class="workflow-nav" aria-label="工作流">
         <p class="section-label">工作流</p>
         <button class="workflow-button is-active" type="button" data-workflow="diagnosis">
@@ -152,7 +152,7 @@
         </section>
         <p class="signal-caveat">机器判定提示:方向按词表匹配,可能误判(例如 “Not easy to clean” 因含 easy 被计为支持);下结论前请逐条核对证据原文。</p>
         {% if mode == "local" %}
-        <p class="signal-caveat insight-caveat">AI 深入分析是可选步骤:默认不联网、不花费;点开某张证据卡的按钮后,才会读取该方面 5 条评论原文并调用 1 次模型。AI 只负责说清评论里写了什么,不判断证据够不够。</p>
+        <p class="signal-caveat insight-caveat">AI 深入分析是可选步骤:默认不联网、不花费;点开某张证据卡的按钮后,才会读取该方面 5 条评论原文并调用 1 次模型。AI 只负责说清评论里写了什么,不判断证据够不够。如果本站没有配置密钥,会请你填入自己的 DeepSeek API Key:它只存在当前标签页、关闭即清除,只用于这次分析,不会写进日志或磁盘。</p>
         {% endif %}
         <p class="signal-caveat blind-spot-note" id="blind-spot-note" hidden></p>
 

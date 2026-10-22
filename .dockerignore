@@ -1,0 +1,32 @@
+# Everything the image must not carry: raw/private data, local state, dev files.
+data/
+tmp/
+private/
+简历/
+规划/
+学习路线/
+
+# Local Python environments and caches
+.venv/
+**/__pycache__/
+*.pyc
+.ruff_cache/
+.pytest_cache/
+*.egg-info/
+
+# Version control and editor state
+.git/
+.gitignore
+.zcodeignore
+.vscode/
+.idea/
+
+# Documentation and evaluation material that the runtime does not need
+docs/
+tests/
+artifacts/evals/
+artifacts/evaluation-summaries/
+.env
+.env.*
+Dockerfile
+docker-compose.yml

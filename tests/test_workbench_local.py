@@ -14,6 +14,23 @@ from ecom_review_intelligence.workbench_service import P6BackedWorkbenchService
 from ecom_review_intelligence.workbench_web import create_workbench_app
 
 
+def test_local_product_titles_are_short_and_operator_facing():
+    assert (
+        P6BackedWorkbenchService._friendly_product_title(
+            "AGLUCKY Countertop Ice Maker Machine, Portable Ice Makers Countertop, Make 26 lbs ice",
+            "frostline",
+        )
+        == "AGLUCKY 便携制冰机（26磅）"
+    )
+    assert (
+        P6BackedWorkbenchService._friendly_product_title(
+            "GE Profile Opal Countertop Nugget Ice Maker with Side Tank",
+            "northstar",
+        )
+        == "GE Profile 颗粒冰制冰机"
+    )
+
+
 def _local_fixture(tmp_path):
     store = tmp_path / "evidence.sqlite"
     checkpoint = tmp_path / "checkpoint.sqlite"
@@ -50,6 +67,286 @@ def _local_fixture(tmp_path):
     return store, checkpoint, config, private_product_id, private_review, evidence_id
 
 
+def _blind_spot_fixture(tmp_path):
+    store = tmp_path / "evidence.sqlite"
+    checkpoint = tmp_path / "checkpoint.sqlite"
+    snapshot, contract = "a" * 64, "b" * 64
+    initialize_store(
+        store,
+        snapshot_id=snapshot,
+        contract_sha256=contract,
+        aspect_terms={"noise": ("noise",)},
+        polarity_terms={"supporting": ("quiet",), "opposing": ("loud",)},
+    )
+    private_product_id = "LOCAL_PRIVATE_PRODUCT"
+    reviews = [
+        ("noise loud hum", 5.0),
+        ("it makes a lot of noise after weeks", 1.0),
+        ("some noise overnight", 5.0),
+        ("noise from the pump", 2.0),
+    ]
+    with sqlite3.connect(store) as connection:
+        connection.execute(
+            "INSERT INTO products(parent_asin,title) VALUES (?,?)",
+            (private_product_id, "Private local title"),
+        )
+        for index, (text, rating) in enumerate(reviews, start=1):
+            connection.execute(
+                "INSERT INTO reviews(evidence_id,source_line,parent_asin,text,rating,timestamp,verified_purchase,helpful_vote) VALUES (?,?,?,?,?,?,?,?)",
+                (
+                    compute_evidence_id(snapshot, index),
+                    index,
+                    private_product_id,
+                    text,
+                    rating,
+                    index,
+                    1,
+                    0,
+                ),
+            )
+        connection.execute(
+            "INSERT INTO reviews_fts(rowid,text) SELECT rowid,text FROM reviews"
+        )
+    config = {
+        "dataset_snapshot_id": snapshot,
+        "contract_sha256": contract,
+        "retrieval_limit_per_aspect": 5,
+        "model": "deterministic-local-workbench",
+        "config_sha256": "c" * 64,
+    }
+    return store, checkpoint, config, private_product_id
+
+
+def test_diagnosis_reports_lexicon_blind_spot_and_keeps_review_text_private(tmp_path):
+    store, checkpoint, config, private_product_id = _blind_spot_fixture(tmp_path)
+    service = P6BackedWorkbenchService(
+        store_path=store,
+        checkpoint_path=checkpoint,
+        trace_path=tmp_path / "workbench-traces.jsonl",
+        config=config,
+        product_ids_by_code={"frostline": private_product_id},
+        uuid_factory=lambda: UUID("00000000-0000-4000-8000-000000000001"),
+    )
+    client = TestClient(create_workbench_app(service=service))
+
+    response = client.post(
+        "/api/v1/runs",
+        json={
+            "workflow": "diagnosis",
+            "product_codes": ["frostline"],
+            "product_query": None,
+            "aspect": "noise",
+            "question": "Which signal should operations verify?",
+        },
+    )
+
+    assert response.status_code == 201
+    payload = response.json()
+    blind_spot = payload["lexicon_blind_spot"]
+    assert blind_spot["matched_count"] == 4
+    assert blind_spot["insufficient_count"] == 3
+    assert blind_spot["insufficient_low_rating_count"] == 2
+    assert "词表盲区" in blind_spot["note"]
+    assert "3" in blind_spot["note"] and "2" in blind_spot["note"]
+    serialized = json.dumps(payload, ensure_ascii=False)
+    assert "a lot of noise" not in serialized
+    assert "overnight" not in serialized
+
+
+def test_run_without_lexicon_gaps_has_no_blind_spot(tmp_path):
+    store, checkpoint, config, private_product_id, _, _ = _local_fixture(tmp_path)
+    service = P6BackedWorkbenchService(
+        store_path=store,
+        checkpoint_path=checkpoint,
+        trace_path=tmp_path / "workbench-traces.jsonl",
+        config=config,
+        product_ids_by_code={"frostline": private_product_id},
+        uuid_factory=lambda: UUID("00000000-0000-4000-8000-000000000002"),
+    )
+    client = TestClient(create_workbench_app(service=service))
+
+    response = client.post(
+        "/api/v1/runs",
+        json={
+            "workflow": "diagnosis",
+            "product_codes": ["frostline"],
+            "product_query": None,
+            "aspect": "noise",
+            "question": "Which signal should operations verify?",
+        },
+    )
+
+    assert response.status_code == 201
+    assert response.json()["lexicon_blind_spot"] is None
+
+
+def _write_model_labels(tmp_path, records):
+    path = tmp_path / "model_labels.jsonl"
+    path.write_text(
+        "".join(json.dumps(record, ensure_ascii=False) + "\n" for record in records),
+        encoding="utf-8",
+    )
+    return path
+
+
+def test_blind_spot_includes_model_label_three_way_account(tmp_path):
+    store, checkpoint, config, private_product_id = _blind_spot_fixture(tmp_path)
+    _write_model_labels(
+        tmp_path,
+        [
+            {
+                "id": "noise:1",
+                "aspect": "noise",
+                "polarity": "supporting",
+                "reason": "normal",
+                "span": "SECRET_DIRECTION_SPAN",
+                "labeled_by": "qwen3.8flash@Qoder",
+            },
+            {
+                "id": "noise:2",
+                "aspect": "noise",
+                "polarity": "opposing",
+                "reason": "normal",
+                "span": "SECRET_SPAN_A",
+                "labeled_by": "qwen3.8flash@Qoder",
+            },
+            {
+                "id": "noise:3",
+                "aspect": "noise",
+                "polarity": "insufficient",
+                "reason": "off_topic",
+                "span": "",
+                "labeled_by": "qwen3.8flash@Qoder",
+            },
+            {
+                "id": "noise:4",
+                "aspect": "noise",
+                "polarity": "insufficient",
+                "reason": "vague",
+                "span": "",
+                "labeled_by": "qwen3.8flash@Qoder",
+            },
+            {
+                "id": "noise:9999",
+                "aspect": "noise",
+                "polarity": "supporting",
+                "reason": "normal",
+                "span": "",
+                "labeled_by": "qwen3.8flash@Qoder",
+            },
+        ],
+    )
+    service = P6BackedWorkbenchService(
+        store_path=store,
+        checkpoint_path=checkpoint,
+        trace_path=tmp_path / "workbench-traces.jsonl",
+        config=config,
+        product_ids_by_code={"frostline": private_product_id},
+        uuid_factory=lambda: UUID("00000000-0000-4000-8000-000000000001"),
+    )
+    client = TestClient(create_workbench_app(service=service))
+
+    response = client.post(
+        "/api/v1/runs",
+        json={
+            "workflow": "diagnosis",
+            "product_codes": ["frostline"],
+            "product_query": None,
+            "aspect": "noise",
+            "question": "Which signal should operations verify?",
+        },
+    )
+
+    assert response.status_code == 201
+    blind_spot = response.json()["lexicon_blind_spot"]
+    assert blind_spot["insufficient_count"] == 3
+    assert blind_spot["model_direction_count"] == 1
+    assert blind_spot["model_off_topic_count"] == 1
+    assert blind_spot["model_unclear_count"] == 1
+    assert blind_spot["model_labeler"] == "qwen3.8flash@Qoder"
+    assert "模型代标" in blind_spot["note"]
+    assert "1 条判出方向" in blind_spot["note"]
+    serialized = json.dumps(response.json(), ensure_ascii=False)
+    assert "SECRET_" not in serialized
+
+
+def test_blind_spot_without_model_labels_file_keeps_legacy_shape(tmp_path):
+    store, checkpoint, config, private_product_id = _blind_spot_fixture(tmp_path)
+    service = P6BackedWorkbenchService(
+        store_path=store,
+        checkpoint_path=checkpoint,
+        trace_path=tmp_path / "workbench-traces.jsonl",
+        config=config,
+        product_ids_by_code={"frostline": private_product_id},
+        uuid_factory=lambda: UUID("00000000-0000-4000-8000-000000000003"),
+    )
+    client = TestClient(create_workbench_app(service=service))
+
+    response = client.post(
+        "/api/v1/runs",
+        json={
+            "workflow": "diagnosis",
+            "product_codes": ["frostline"],
+            "product_query": None,
+            "aspect": "noise",
+            "question": "Which signal should operations verify?",
+        },
+    )
+
+    assert response.status_code == 201
+    blind_spot = response.json()["lexicon_blind_spot"]
+    assert blind_spot["insufficient_count"] == 3
+    assert blind_spot["model_direction_count"] is None
+    assert blind_spot["model_off_topic_count"] is None
+    assert blind_spot["model_unclear_count"] is None
+    assert blind_spot["model_labeler"] is None
+    assert "模型代标" not in blind_spot["note"]
+
+
+def test_blind_spot_model_labels_partial_coverage_is_disclosed(tmp_path):
+    store, checkpoint, config, private_product_id = _blind_spot_fixture(tmp_path)
+    _write_model_labels(
+        tmp_path,
+        [
+            {
+                "id": "noise:2",
+                "aspect": "noise",
+                "polarity": "opposing",
+                "reason": "normal",
+                "span": "",
+                "labeled_by": "qwen3.8flash@Qoder",
+            },
+        ],
+    )
+    service = P6BackedWorkbenchService(
+        store_path=store,
+        checkpoint_path=checkpoint,
+        trace_path=tmp_path / "workbench-traces.jsonl",
+        config=config,
+        product_ids_by_code={"frostline": private_product_id},
+        uuid_factory=lambda: UUID("00000000-0000-4000-8000-000000000004"),
+    )
+    client = TestClient(create_workbench_app(service=service))
+
+    response = client.post(
+        "/api/v1/runs",
+        json={
+            "workflow": "diagnosis",
+            "product_codes": ["frostline"],
+            "product_query": None,
+            "aspect": "noise",
+            "question": "Which signal should operations verify?",
+        },
+    )
+
+    assert response.status_code == 201
+    blind_spot = response.json()["lexicon_blind_spot"]
+    assert blind_spot["model_direction_count"] == 1
+    assert blind_spot["model_off_topic_count"] == 0
+    assert blind_spot["model_unclear_count"] == 0
+    assert "代标已覆盖 1/3 条" in blind_spot["note"]
+
+
 def test_p6_backed_api_uses_real_graph_and_sqlite_without_public_local_values(tmp_path):
     store, checkpoint, config, private_product_id, private_review, evidence_id = (
         _local_fixture(tmp_path)
@@ -81,7 +378,10 @@ def test_p6_backed_api_uses_real_graph_and_sqlite_without_public_local_values(tm
     assert payload["status"] == "VERIFIED_RESULT"
     assert payload["evidence_count"] == 1
     assert payload["evidence"][0]["aspect"] == "noise"
-    assert payload["products"][0]["label"] == "受控本地商品 A"
+    assert payload["products"][0]["label"] == "Private local title"
+    assert payload["products"][0]["segment"] == "评论数量: 1 条"
+    assert payload["matched_count"] == 1
+    assert payload["product_summaries"][0]["product_code"] == "frostline"
     assert payload["run_alias"] == "RUN-00000000"
     assert private_product_id not in serialized
     assert private_review not in serialized

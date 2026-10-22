@@ -1,0 +1,38 @@
+services:
+  demo:
+    build: .
+    image: ecom-review-intelligence:demo
+    ports:
+      - "8000:8000"
+    environment:
+      # The app rejects unknown Host headers (DNS-rebinding guard), so a host name
+      # used to reach the container has to be named here.
+      WORKBENCH_ALLOWED_HOSTS: "localhost,127.0.0.1"
+    restart: unless-stopped
+
+  local:
+    profiles: ["local"]
+    build: .
+    image: ecom-review-intelligence:demo
+    command:
+      - python
+      - scripts/serve_demo.py
+      - --host=0.0.0.0
+      - --allow-non-loopback
+      - --port=8000
+      - --mode=local
+      - --acknowledge-local-data
+      - --project-root=/app
+      - --verdicts-path=/app/data/processed/p7_workbench_verdicts.jsonl
+    ports:
+      - "8001:8000"
+    environment:
+      WORKBENCH_ALLOWED_HOSTS: "localhost,127.0.0.1"
+      # Optional: only the opt-in AI reading step calls the model.
+      DEEPSEEK_API_KEY: "${DEEPSEEK_API_KEY:-}"
+    volumes:
+      # Read-write on purpose: a run writes a checkpoint, and every human check
+      # appends to the verdict log under data/processed/.
+      - ./data:/app/data
+      - ./artifacts/manifests:/app/artifacts/manifests:ro
+    restart: unless-stopped

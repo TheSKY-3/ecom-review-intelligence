@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import re
 from collections import deque
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 from time import perf_counter
@@ -14,6 +16,7 @@ from typing import Any, Protocol
 from pydantic import ValidationError
 
 from ecom_review_intelligence.agent_contracts import AgentDraft, AgentPlan, SafeEvidenceCard
+from ecom_review_intelligence.agent_insight import INSIGHT_SYSTEM_PROMPT, InsightDraft
 
 
 class GatewayError(RuntimeError):
@@ -480,3 +483,107 @@ def _reject_prohibited_replay_content(value: Any) -> None:
             _reject_prohibited_replay_content(item)
     elif isinstance(value, str) and _ABSOLUTE_PATH.search(value):
         raise GatewayError("POLICY_REJECTED", "Replay fixture contains prohibited data.")
+
+class InsightGateway(Protocol):
+    """The whole model contract for the opt-in reading step."""
+
+    def analyse(self, payload: Mapping[str, Any]) -> InsightDraft: ...
+
+
+class DeepSeekInsightGateway:
+    """One call per click, no retries, no thinking, no tools beyond one submit."""
+
+    def __init__(
+        self,
+        *,
+        client: Any,
+        model: str = "deepseek-v4-flash",
+        max_output_tokens: int = 900,
+        request_timeout_seconds: int = 30,
+    ) -> None:
+        if getattr(client, "max_retries", 0) != 0:
+            raise ValueError("DeepSeek client automatic retries must be disabled.")
+        self.client = client
+        self.model = model
+        self.max_output_tokens = max_output_tokens
+        self.request_timeout_seconds = request_timeout_seconds
+
+    def analyse(self, payload: Mapping[str, Any]) -> InsightDraft:
+        try:
+            response = self.client.chat.completions.create(
+                model=self.model,
+                stream=False,
+                temperature=0,
+                max_tokens=self.max_output_tokens,
+                timeout=self.request_timeout_seconds,
+                extra_body={"thinking": {"type": "disabled"}},
+                messages=[
+                    {"role": "system", "content": INSIGHT_SYSTEM_PROMPT},
+                    {
+                        "role": "user",
+                        "content": json.dumps(dict(payload), ensure_ascii=False, sort_keys=True),
+                    },
+                ],
+                tools=[
+                    {
+                        "type": "function",
+                        "function": {
+                            "name": "submit_insight",
+                            "description": (
+                                "Submit a constrained review-reading result; execute nothing."
+                            ),
+                            "parameters": InsightDraft.model_json_schema(),
+                        },
+                    }
+                ],
+                tool_choice={"type": "function", "function": {"name": "submit_insight"}},
+            )
+        except Exception as error:
+            raise GatewayError("API_UNAVAILABLE", "The model provider request failed.") from error
+        try:
+            tool_calls = response.choices[0].message.tool_calls
+            if len(tool_calls or ()) != 1:
+                raise ValueError("exactly one tool call required")
+            function = tool_calls[0].function
+            if function.name != "submit_insight":
+                raise ValueError("unexpected tool")
+            return InsightDraft.model_validate(json.loads(function.arguments))
+        except (
+            AttributeError,
+            IndexError,
+            TypeError,
+            ValueError,
+            json.JSONDecodeError,
+            ValidationError,
+        ) as error:
+            raise GatewayError(
+                "MODEL_OUTPUT_INVALID", "Model insight output is invalid."
+            ) from error
+
+
+def _openai_client(**kwargs: Any) -> Any:
+    from openai import OpenAI
+
+    return OpenAI(**kwargs)
+
+
+def build_insight_gateway(
+    config: Mapping[str, Any],
+    *,
+    client_factory: Callable[..., Any] | None = None,
+    environment: Mapping[str, str] | None = None,
+) -> DeepSeekInsightGateway | None:
+    """Return a gateway only when a key is configured; otherwise the step is hidden."""
+
+    env = os.environ if environment is None else environment
+    key = (env.get("DEEPSEEK_API_KEY") or "").strip()
+    if not key:
+        return None
+    factory = client_factory or _openai_client
+    client = factory(api_key=key, base_url=str(config["base_url"]), max_retries=0)
+    return DeepSeekInsightGateway(
+        client=client,
+        model=str(config["model"]),
+        max_output_tokens=900,
+        request_timeout_seconds=int(config.get("request_timeout_seconds", 30)),
+    )

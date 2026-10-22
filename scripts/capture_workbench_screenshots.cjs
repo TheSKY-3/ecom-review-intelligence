@@ -146,7 +146,39 @@ async function capture() {
     await page.waitFor("!!document.querySelector('.evidence-item')", "evidence card", 90000);
     await sleep(600);
 
-    if (SCENARIO === "ai-key") {
+    if (SCENARIO === "ai-result") {
+      // Fill the visitor key so the real AI panel is on screen, then wait for READY.
+      const key = process.env.BYO_TEST_KEY || "";
+      if (!key) throw new Error("BYO_TEST_KEY is required for the ai-result scenario");
+      await page.evaluate(`(() => {
+        const button = [...document.querySelectorAll('button.insight-toggle')]
+          .find((item) => item.textContent.includes('AI'));
+        if (!button) throw new Error('insight button missing');
+        button.click();
+        return true;
+      })()`);
+      await page.waitFor(
+        "(() => { const p = document.querySelector('.insight-key'); return !!p && !p.hidden; })()",
+        "visitor key panel",
+        15000,
+      );
+      await page.evaluate(`(() => {
+        const input = document.querySelector('.insight-key-input');
+        input.value = ${JSON.stringify(key)};
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+        document.querySelector('.insight-key-submit').click();
+        return true;
+      })()`);
+      await page.waitFor(
+        "(() => { const box = document.querySelector('.insight-result'); return !!box && box.innerText.length > 10; })()",
+        "insight result",
+        150000,
+      );
+      await page.evaluate(
+        "document.querySelector('.insight-result').scrollIntoView({ block: 'start' })",
+      );
+      await sleep(500);
+    } else if (SCENARIO === "ai-key") {
       await page.evaluate(`(() => {
         const button = [...document.querySelectorAll('button.insight-toggle')]
           .find((item) => item.textContent.includes('AI 深入分析'));

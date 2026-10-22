@@ -64,7 +64,9 @@ def test_create_and_fetch_diagnosis_run_uses_closed_public_dto():
         "title",
         "summary",
         "evidence_count",
+        "matched_count",
         "signal_totals",
+        "product_summaries",
         "degraded",
         "next_action",
         "products",
@@ -72,11 +74,14 @@ def test_create_and_fetch_diagnosis_run_uses_closed_public_dto():
         "comparison_rows",
         "triage_items",
         "clarification",
+        "lexicon_blind_spot",
     }
     assert re.fullmatch(r"RUN-[0-9A-F]{8}", payload["run_alias"])
     assert payload["status"] == "VERIFIED_RESULT"
     assert payload["workflow"] == "diagnosis"
     assert payload["evidence_count"] == len(payload["evidence"]) > 0
+    assert payload["matched_count"] == payload["evidence_count"]
+    assert payload["product_summaries"]
     assert payload["degraded"] is False
     _assert_public_safe(payload)
 
@@ -114,6 +119,7 @@ def test_comparison_and_triage_have_workflow_specific_outputs():
             "signal",
             "direction",
             "strength",
+            "matched_count",
             "evidence_count",
             "comparable",
             "insufficient_reason",
@@ -244,6 +250,9 @@ def test_workbench_page_is_task_first_and_uses_only_local_assets():
     assert 'id="run-form"' in response.text
     assert 'id="result-panel"' in response.text
     assert 'id="run-alias"' in response.text
+    assert 'id="coverage-bar"' in response.text
+    assert 'id="blind-spot-note"' in response.text
+    assert 'id="product-signal-visual"' in response.text
     assert 'id="workbench-mode">SYNTHETIC<' in response.text
     assert 'href="/static/workbench.css?v=' in response.text
     assert 'src="/static/workbench.js?v=' in response.text
@@ -256,14 +265,23 @@ def test_page_and_health_show_the_injected_backend_mode():
     class LocalModeService:
         mode = "local"
 
+        def product_options(self):
+            return (
+                type(
+                    "Product",
+                    (),
+                    {"code": "frostline", "label": "商品 A", "segment": "评论数量: 1 条"},
+                )(),
+            )
+
     client = TestClient(module.create_workbench_app(service=LocalModeService()))
 
     assert client.get("/health").json()["mode"] == "local"
     page = client.get("/").text
     assert 'id="workbench-mode">LOCAL<' in page
-    assert "受控本地证据" in page
-    assert "合成回放" not in page
-    assert "受控本地商品 A" in page
+    assert "本地评论数据" in page
+    assert "演示数据" not in page
+    assert "商品 A" in page
     assert "Frostline Countertop" not in page
 
 

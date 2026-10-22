@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 import json
+import re
 import sqlite3
 from collections.abc import Callable
+from datetime import UTC, datetime
 from pathlib import Path
+from threading import Lock
 from typing import Protocol
 from uuid import UUID, uuid4
 
@@ -24,21 +27,42 @@ from ecom_review_intelligence.agent_graph import (
     AgentGraphDependencies,
     open_sqlite_agent_graph,
 )
+from ecom_review_intelligence.agent_insight import (
+    MAX_REVIEWS,
+    InsightCheck,
+    InsightDraft,
+    build_payload,
+    sanitize_public_text,
+    validate_draft,
+)
 from ecom_review_intelligence.agent_tools import (
     EvidenceToolService,
     ProductResolver,
 )
 from ecom_review_intelligence.agent_trace import append_local_trace, serialize_public_trace
-from ecom_review_intelligence.engine import query_aspect, verify_citation
-from ecom_review_intelligence.model_gateway import RequestBudget
+from ecom_review_intelligence.engine import _polarity, query_aspect, verify_citation
+from ecom_review_intelligence.model_gateway import (
+    GatewayError,
+    InsightGateway,
+    RequestBudget,
+    build_insight_gateway,
+)
 from ecom_review_intelligence.workbench_contracts import (
     ClarificationView,
     ComparisonRow,
     EvidenceDetail,
     EvidenceRowView,
     EvidenceView,
+    InsightPoint,
+    InsightRejected,
+    InsightView,
+    LexiconBlindSpotView,
+    ProductSignalSummary,
     ProductView,
     TriageItem,
+    VerdictList,
+    VerdictRecord,
+    VerdictRequest,
     WorkbenchResumeRequest,
     WorkbenchRun,
     WorkbenchRunRequest,
@@ -61,14 +85,73 @@ class WorkbenchEvidenceUnavailable(LookupError):
     """Raised when a run has no on-demand review-text detail to serve."""
 
 
+class WorkbenchInsightUnavailable(LookupError):
+    """The opt-in reading step is unavailable for this run or this deployment."""
+
+
+class VerdictStore:
+    """Append-only audit log of human checks; it never stores review text.
+
+    The file is a JSONL record per click so a crashed or concurrent writer can at
+    worst leave one unreadable line, which the reader skips instead of failing.
+    """
+
+    def __init__(self, path: Path | None = None) -> None:
+        self._path = Path(path) if path is not None else None
+        self._records: list[VerdictRecord] = []
+        self._lock = Lock()
+
+    def append(self, record: VerdictRecord) -> None:
+        with self._lock:
+            if self._path is None:
+                self._records.append(record)
+                return
+            self._path.parent.mkdir(parents=True, exist_ok=True)
+            line = json.dumps(
+                record.model_dump(mode="json"), ensure_ascii=False, sort_keys=True
+            )
+            with self._path.open("a", encoding="utf-8", newline="\n") as handle:
+                handle.write(line)
+                handle.write("\n")
+
+    def for_run(self, run_token: str) -> tuple[VerdictRecord, ...]:
+        with self._lock:
+            records = list(self._records) if self._path is None else self._read()
+        latest: dict[str, VerdictRecord] = {}
+        for record in records:
+            if record.run_token == run_token:
+                latest[record.card_alias] = record
+        return tuple(latest.values())
+
+    def _read(self) -> list[VerdictRecord]:
+        if self._path is None or not self._path.exists():
+            return []
+        records: list[VerdictRecord] = []
+        with self._path.open(encoding="utf-8") as handle:
+            for line in handle:
+                if not line.strip():
+                    continue
+                try:
+                    records.append(VerdictRecord.model_validate_json(line))
+                except ValueError:
+                    continue
+        return records
+
+
 class WorkbenchService(Protocol):
     mode: str
+
+    def product_options(self) -> tuple[ProductView, ...]: ...
 
     def create_run(self, request: WorkbenchRunRequest) -> WorkbenchRun: ...
 
     def get_run(self, run_token: str) -> WorkbenchRun: ...
 
     def resume_run(self, run_token: str, request: WorkbenchResumeRequest) -> WorkbenchRun: ...
+
+    def record_verdict(self, request: VerdictRequest) -> VerdictRecord: ...
+
+    def list_verdicts(self, run_token: str) -> VerdictList: ...
 
 
 _PRODUCTS = {
@@ -82,13 +165,13 @@ _PRODUCTS = {
 }
 _LOCAL_PRODUCTS = {
     "frostline": ProductView(
-        code="frostline", label="受控本地商品 A", segment="私有目录别名"
+        code="frostline", label="商品 A", segment="评论数量: 0 条"
     ),
     "northstar": ProductView(
-        code="northstar", label="受控本地商品 B", segment="私有目录别名"
+        code="northstar", label="商品 B", segment="评论数量: 0 条"
     ),
     "harbor": ProductView(
-        code="harbor", label="受控本地商品 C", segment="私有目录别名"
+        code="harbor", label="商品 C", segment="评论数量: 0 条"
     ),
 }
 
@@ -116,6 +199,42 @@ class SyntheticWorkbenchService:
         self._uuid_factory = uuid_factory
         self._runs: dict[str, WorkbenchRun] = {}
         self._pending: dict[str, WorkbenchRunRequest] = {}
+        self._verdict_store = VerdictStore()
+
+    def product_options(self) -> tuple[ProductView, ...]:
+        return tuple(_PRODUCTS.values())
+
+    def record_verdict(self, request: VerdictRequest) -> VerdictRecord:
+        """Persist one human check on one card; it refuses cards outside the run."""
+
+        run = self.get_run(request.run_token)
+        card = next(
+            (item for item in run.evidence if item.evidence_alias == request.card_alias),
+            None,
+        )
+        if card is None:
+            raise WorkbenchInputError("Evidence card does not belong to this run.")
+        record = VerdictRecord(
+            run_token=run.run_token,
+            run_alias=run.run_alias,
+            card_alias=card.evidence_alias,
+            verdict=request.verdict,
+            recorded_at=datetime.now(UTC).isoformat(timespec="seconds"),
+            workflow=run.workflow,
+            aspect=card.aspect,
+            product_labels=tuple(
+                product.label for product in run.products if product.code == card.product_code
+            ),
+            polarity=card.polarity,
+            strength=card.strength,
+            matched_count=run.matched_count,
+            evidence_count=run.evidence_count,
+        )
+        self._verdict_store.append(record)
+        return record
+
+    def list_verdicts(self, run_token: str) -> VerdictList:
+        return VerdictList(run_token=run_token, records=self._verdict_store.for_run(run_token))
 
     def create_run(self, request: WorkbenchRunRequest) -> WorkbenchRun:
         token = str(self._uuid_factory())
@@ -127,7 +246,11 @@ class SyntheticWorkbenchService:
                 status="CLARIFICATION_REQUIRED",
                 workflow=request.workflow,
                 title="需要选择商品",
-                summary="两个合成目录条目匹配本次请求。",
+                summary=(
+                    "两个本地目录条目匹配本次请求。"
+                    if self.mode == "local"
+                    else "两个合成目录条目匹配本次请求。"
+                ),
                 evidence_count=0,
                 degraded=False,
                 next_action="选择一个商品以继续同一运行。",
@@ -198,6 +321,20 @@ class SyntheticWorkbenchService:
             )
             for index, product in enumerate(products, start=1)
         )
+        product_summaries = tuple(
+            ProductSignalSummary(
+                product_code=product.code,
+                matched_count=1,
+                evidence_count=1,
+                signal_totals={
+                    "supporting": int(index % 2 == 0),
+                    "opposing": int(index % 2 == 1),
+                    "conflicting": 0,
+                    "insufficient": 0,
+                },
+            )
+            for index, product in enumerate(products, start=1)
+        )
         comparison_rows: tuple[ComparisonRow, ...] = ()
         triage_items: tuple[TriageItem, ...] = ()
         if request.workflow is Workflow.COMPARISON:
@@ -207,6 +344,7 @@ class SyntheticWorkbenchService:
                     signal=f"{aspect_label}评论信号",
                     direction="watch" if index == 1 else "mixed",
                     strength="STRONG" if index == 1 else "MODERATE",
+                    matched_count=1,
                     evidence_count=1,
                     comparable=True,
                     insufficient_reason=None,
@@ -236,15 +374,17 @@ class SyntheticWorkbenchService:
             status="VERIFIED_RESULT",
             workflow=request.workflow,
             title={
-                Workflow.DIAGNOSIS: "SKU 证据诊断",
-                Workflow.COMPARISON: "竞品证据比较",
-                Workflow.TRIAGE: "运营问题分诊",
+                Workflow.DIAGNOSIS: "商品评价诊断",
+                Workflow.COMPARISON: "商品评价对比",
+                Workflow.TRIAGE: "问题优先级",
             }[request.workflow],
             summary=(
                 "合成证据已就绪,供运营复核。"
                 "信号描述评论内容,不代表已验证的缺陷率。"
             ),
             evidence_count=len(evidence),
+            matched_count=len(evidence),
+            product_summaries=product_summaries,
             degraded=False,
             next_action="复核证据别名并确认下一步内部核查。",
             products=products,
@@ -328,6 +468,9 @@ class P6BackedWorkbenchService(SyntheticWorkbenchService):
         trace_path: Path | None = None,
         config: dict[str, object],
         product_ids_by_code: dict[str, str],
+        model_labels_path: Path | None = None,
+        verdict_path: Path | None = None,
+        insight_gateway_factory: Callable[[], InsightGateway | None] | None = None,
         uuid_factory: Callable[[], UUID | str] = uuid4,
     ) -> None:
         super().__init__(uuid_factory=uuid_factory)
@@ -341,10 +484,99 @@ class P6BackedWorkbenchService(SyntheticWorkbenchService):
         )
         self._config = config
         self._product_ids_by_code = product_ids_by_code
+        self._model_labels_path = (
+            Path(model_labels_path)
+            if model_labels_path is not None
+            else self._store_path.parent / "model_labels.jsonl"
+        )
+        self._model_labels: dict[str, dict[str, str]] | None = None
+        self._insight_gateway_factory = insight_gateway_factory or (
+            lambda: build_insight_gateway(self._config)
+        )
+        self._insight_gateway: InsightGateway | None = None
+        self._insight_resolved = False
+        self._insight_cache: dict[tuple[str, str], InsightView] = {}
         self._evidence_index: dict[str, tuple[tuple[str, str, str], ...]] = {}
+        self._verdict_store = VerdictStore(
+            Path(verdict_path)
+            if verdict_path is not None
+            else self._checkpoint_path.parent / "p7_workbench_verdicts.jsonl"
+        )
+        self._product_views_by_code = self._load_product_views()
+
+    def product_options(self) -> tuple[ProductView, ...]:
+        return tuple(
+            self._product_views_by_code.get(code, _LOCAL_PRODUCTS[code])
+            for code in _LOCAL_PRODUCTS
+            if code in self._product_ids_by_code
+        )
+
+    def _load_product_views(self) -> dict[str, ProductView]:
+        product_ids = tuple(self._product_ids_by_code.values())
+        if not product_ids:
+            return {}
+        placeholders = ",".join("?" for _ in product_ids)
+        with sqlite3.connect(
+            f"file:{self._store_path.as_posix()}?mode=ro", uri=True
+        ) as connection:
+            rows = connection.execute(
+                f"""
+                SELECT p.parent_asin, p.title, count(r.evidence_id)
+                FROM products p
+                LEFT JOIN reviews r ON r.parent_asin = p.parent_asin
+                WHERE p.parent_asin IN ({placeholders})
+                GROUP BY p.parent_asin, p.title
+                """,
+                product_ids,
+            ).fetchall()
+        by_id = {
+            str(parent_asin): (str(title or ""), int(count))
+            for parent_asin, title, count in rows
+        }
+        return {
+            code: ProductView(
+                code=code,
+                label=self._friendly_product_title(by_id.get(product_id, ("", 0))[0], code),
+                segment=f"评论数量: {by_id.get(product_id, ('', 0))[1]:,} 条",
+            )
+            for code, product_id in self._product_ids_by_code.items()
+        }
+
+    @staticmethod
+    def _safe_product_title(title: str, code: str) -> str:
+        """Keep useful local titles while removing identifier-like leak shapes."""
+
+        fallback = _LOCAL_PRODUCTS.get(
+            code,
+            ProductView(code=code, label="商品", segment="评论数量: 0 条"),
+        ).label
+        cleaned = " ".join(title.split())
+        cleaned = re.sub(r"(?i)\bB[A-Z0-9]{9}\b", "", cleaned)
+        cleaned = re.sub(r"(?i)\b[0-9a-f]{64}\b", "", cleaned)
+        cleaned = re.sub(r"[A-Za-z]:[\\/][^\s]+|(?:\\\\|//)[^\s]+", "", cleaned)
+        cleaned = " ".join(cleaned.split()).strip(" ,;:-")
+        if not cleaned:
+            return fallback
+        return cleaned if len(cleaned) <= 88 else cleaned[:85].rstrip() + "..."
+
+    @classmethod
+    def _friendly_product_title(cls, title: str, code: str) -> str:
+        """Turn long catalog titles into short operator-facing product names."""
+
+        cleaned = cls._safe_product_title(title, code)
+        upper = cleaned.upper()
+        pound_match = re.search(r"(\d+)\s*LBS?", upper)
+        pound_suffix = f"（{pound_match.group(1)}磅）" if pound_match else ""
+        if "AGLUCKY" in upper:
+            return f"AGLUCKY 便携制冰机{pound_suffix}"
+        if "GE PROFILE" in upper:
+            return "GE Profile 颗粒冰制冰机" if "NUGGET" in upper else "GE Profile 制冰机"
+        if "EUHOMY" in upper:
+            return f"EUHOMY 台式制冰机{pound_suffix}"
+        return cleaned
 
     def _product_view(self, code: str) -> ProductView:
-        return _LOCAL_PRODUCTS[code]
+        return self._product_views_by_code.get(code, _LOCAL_PRODUCTS[code])
 
     def _build_result(
         self, token: str, request: WorkbenchRunRequest, product_codes: tuple[str, ...]
@@ -353,7 +585,7 @@ class P6BackedWorkbenchService(SyntheticWorkbenchService):
             product_ids = tuple(self._product_ids_by_code[code] for code in product_codes)
             products = tuple(self._product_view(code) for code in product_codes)
         except KeyError as error:
-            raise WorkbenchInputError("Unknown controlled local product.") from error
+            raise WorkbenchInputError("Unknown local product.") from error
         dependencies = AgentGraphDependencies(
             resolver=ProductResolver(self._store_path),
             gateway_factory=lambda budget: self._gateway(budget, request),
@@ -427,11 +659,27 @@ class P6BackedWorkbenchService(SyntheticWorkbenchService):
                 polarity=self._card_polarity(card),
                 strength=card.evidence_strength,
                 excerpt=(
-                    f"受控本地{_ASPECT_WORDING[request.aspect.value][0]}证据"
+                    f"本地{_ASPECT_WORDING[request.aspect.value][0]}证据"
                     "已通过校验;评论原文保持私密。"
                 ),
             )
             for index, card in enumerate(visible_cards, start=1)
+        )
+        product_summaries = tuple(
+            ProductSignalSummary(
+                product_code=code_by_local[local_by_alias[card.product_alias]],
+                matched_count=self._matched_count(
+                    str(local_by_alias[card.product_alias]), request.aspect.value
+                ),
+                evidence_count=card.returned_evidence_count,
+                signal_totals={
+                    "supporting": card.supporting_count,
+                    "opposing": card.opposing_count,
+                    "conflicting": card.conflicting_count,
+                    "insufficient": card.insufficient_count,
+                },
+            )
+            for card in cards
         )
         comparison_rows = ()
         if request.workflow is Workflow.COMPARISON:
@@ -447,12 +695,15 @@ class P6BackedWorkbenchService(SyntheticWorkbenchService):
                         else "advantage"
                     ),
                     strength=card.evidence_strength,
+                    matched_count=self._matched_count(
+                        str(local_by_alias[card.product_alias]), request.aspect.value
+                    ),
                     evidence_count=card.returned_evidence_count,
                     comparable=card.returned_evidence_count > 0,
                     insufficient_reason=(
                         None
                         if card.returned_evidence_count > 0
-                        else "未返回受控本地证据。"
+                        else "未返回本地证据。"
                     ),
                 )
                 for card in cards
@@ -487,24 +738,29 @@ class P6BackedWorkbenchService(SyntheticWorkbenchService):
         aspect_label = _ASPECT_WORDING[request.aspect.value][0]
         aspect_guidance = _ASPECT_WORDING[request.aspect.value][1]
         total_matched = self._total_matched(list(code_by_local), request.aspect.value)
+        lexicon_blind_spot = self._lexicon_blind_spot(
+            list(code_by_local), request.aspect.value
+        )
         return WorkbenchRun(
             run_token=token,
             run_alias=_run_alias(token),
             status=status,
             workflow=request.workflow,
             title={
-                Workflow.DIAGNOSIS: "本地 SKU 证据诊断",
-                Workflow.COMPARISON: "本地竞品证据比较",
-                Workflow.TRIAGE: "本地运营问题分诊",
+                Workflow.DIAGNOSIS: "本地商品评价诊断",
+                Workflow.COMPARISON: "本地商品评价对比",
+                Workflow.TRIAGE: "本地问题优先级",
             }[request.workflow],
             summary=(
                 f"在这批冻结评论中,所选商品的“{aspect_label}”维度共匹配 {total_matched} 条;"
-                f"本次按数据顺序取回 {evidence_count} 条。"
+                f"本次按数据顺序取回 {evidence_count} 条作为核查样本。"
                 f"机器按词表判定方向:支持 {totals['supporting']} 条、反对 {totals['opposing']} 条、"
                 f"冲突 {totals['conflicting']} 条、信息不足 {totals['insufficient']} 条。"
             ),
             evidence_count=evidence_count,
+            matched_count=total_matched,
             signal_totals=totals,
+            product_summaries=product_summaries,
             degraded=status != "VERIFIED_RESULT",
             next_action=(
                 f"重点:{aspect_guidance}。点击证据卡的「查看原文」逐条核对,"
@@ -514,6 +770,7 @@ class P6BackedWorkbenchService(SyntheticWorkbenchService):
             evidence=evidence,
             comparison_rows=comparison_rows,
             triage_items=triage_items,
+            lexicon_blind_spot=lexicon_blind_spot,
         )
 
     @staticmethod
@@ -564,6 +821,141 @@ class P6BackedWorkbenchService(SyntheticWorkbenchService):
             rows=tuple(rows),
         )
 
+    def insight_available(self) -> bool:
+        """The opt-in step is offered only for local runs with a configured key."""
+
+        return self.mode == "local" and self._insight_gateway_or_none() is not None
+
+    def _insight_gateway_or_none(self) -> InsightGateway | None:
+        if not self._insight_resolved:
+            try:
+                self._insight_gateway = self._insight_gateway_factory()
+            except Exception:  # noqa: BLE001 - a bad key or config hides the step
+                self._insight_gateway = None
+            self._insight_resolved = True
+        return self._insight_gateway
+
+    def run_insight(self, run_token: str, card_alias: str) -> InsightView:
+        """Read one card's sampled reviews once, then check every claim against them."""
+
+        cached = self._insight_cache.get((run_token, card_alias))
+        if cached is not None:
+            return cached
+        aspect, product_label, reviews, matched_count = self._insight_inputs(run_token, card_alias)
+        gateway = self._insight_gateway_or_none()
+        if gateway is None:
+            return InsightView(
+                run_token=run_token,
+                card_alias=card_alias,
+                status="UNAVAILABLE",
+                reason="MODEL_NOT_CONFIGURED",
+                review_count=len(reviews),
+            )
+        if not reviews:
+            return InsightView(
+                run_token=run_token,
+                card_alias=card_alias,
+                status="UNAVAILABLE",
+                reason="NO_REVIEW_EVIDENCE",
+                review_count=0,
+            )
+        payload = build_payload(
+            aspect_label=_ASPECT_WORDING[aspect][0],
+            product_label=product_label,
+            matched_count=matched_count,
+            reviews=reviews,
+        )
+        try:
+            draft = gateway.analyse(payload)
+        except GatewayError as error:
+            return InsightView(
+                run_token=run_token,
+                card_alias=card_alias,
+                status="UNAVAILABLE",
+                reason=(
+                    "MODEL_OUTPUT_INVALID"
+                    if error.error_code == "MODEL_OUTPUT_INVALID"
+                    else "MODEL_UNAVAILABLE"
+                ),
+                review_count=len(reviews),
+                model_calls=1,
+            )
+        check = validate_draft(draft, dict(reviews))
+        view = self._insight_view(run_token, card_alias, draft, check, len(reviews))
+        if view.status == "READY":
+            # A failed reading is not cached: the reader may retry and pay one more call.
+            self._insight_cache[(run_token, card_alias)] = view
+        return view
+
+    def _insight_view(
+        self,
+        run_token: str,
+        card_alias: str,
+        draft: InsightDraft,
+        check: InsightCheck,
+        review_count: int,
+    ) -> InsightView:
+        if not check.ok:
+            return InsightView(
+                run_token=run_token,
+                card_alias=card_alias,
+                status="VALIDATION_FAILED",
+                reason=",".join(check.violations),
+                review_count=review_count,
+                model_calls=1,
+            )
+        return InsightView(
+            run_token=run_token,
+            card_alias=card_alias,
+            status="READY",
+            supported=sanitize_public_text(draft.supported),
+            supported_aliases=draft.supported_refs,
+            specifics=tuple(
+                InsightPoint(
+                    text=sanitize_public_text(specific.text),
+                    evidence_aliases=specific.evidence_aliases,
+                    quote=sanitize_public_text(specific.quote),
+                )
+                for specific in draft.specifics
+            ),
+            rejected=tuple(
+                InsightRejected(
+                    evidence_alias=note.evidence_alias,
+                    quote=sanitize_public_text(note.quote),
+                )
+                for note in draft.reviews
+                if not note.relevant
+            ),
+            not_supported=sanitize_public_text(draft.not_supported),
+            review_count=review_count,
+            model_calls=1,
+        )
+
+    def _insight_inputs(
+        self, run_token: str, card_alias: str
+    ) -> tuple[str, str, list[tuple[str, str]], int]:
+        if self.mode != "local":
+            raise WorkbenchInsightUnavailable()
+        entries = self._evidence_index.get(run_token, ())
+        match = next((item for item in entries if item[0] == card_alias), None)
+        if match is None:
+            raise WorkbenchInsightUnavailable()
+        _alias, product_id, aspect = match
+        limit = min(int(self._config["retrieval_limit_per_aspect"]), MAX_REVIEWS)
+        result = query_aspect(self._store_path, (product_id,), aspect, limit=limit)
+        reviews = [
+            (f"E{index}", evidence.text)
+            for index, evidence in enumerate(result.evidence, start=1)
+        ]
+        code = next(
+            (code for code, pid in self._product_ids_by_code.items() if pid == product_id),
+            None,
+        )
+        product_label = (
+            self._product_views_by_code[code].label if code in self._product_views_by_code else "商品"
+        )
+        return aspect, product_label, reviews, self._matched_count(product_id, aspect)
+
     def _total_matched(self, product_ids: list[str], aspect: str) -> int:
         """Count every frozen-contract match behind the bounded retrieval sample."""
 
@@ -585,3 +977,114 @@ class P6BackedWorkbenchService(SyntheticWorkbenchService):
         finally:
             connection.close()
         return int(row[0])
+
+    def _matched_count(self, product_id: str, aspect: str) -> int:
+        return self._total_matched([product_id], aspect)
+
+    def _load_model_labels(self) -> dict[str, dict[str, str]]:
+        """Lazily load the advisory model-label layer (id -> outcome), local only.
+
+        The file carries verbatim review spans, so only id/polarity/reason/labeler
+        are kept; spans must never reach a public response.
+        """
+
+        if self._model_labels is None:
+            labels: dict[str, dict[str, str]] = {}
+            if self._model_labels_path.exists():
+                with open(self._model_labels_path, encoding="utf-8") as handle:
+                    for line in handle:
+                        if not line.strip():
+                            continue
+                        record = json.loads(line)
+                        labels[str(record["id"])] = {
+                            "polarity": str(record.get("polarity", "")),
+                            "reason": str(record.get("reason", "")),
+                            "labeler": str(record.get("labeled_by", "")),
+                        }
+            self._model_labels = labels
+        return self._model_labels
+
+    def _lexicon_blind_spot(
+        self, product_ids: list[str], aspect: str
+    ) -> LexiconBlindSpotView | None:
+        """Quantify the lexicon's unjudged share over every matched frozen review."""
+
+        connection = sqlite3.connect(f"file:{self._store_path.as_posix()}?mode=ro", uri=True)
+        try:
+            vocabulary = connection.execute(
+                "SELECT value FROM store_meta WHERE key = 'aspect_terms'"
+            ).fetchone()
+            if vocabulary is None or aspect not in json.loads(str(vocabulary[0])):
+                raise WorkbenchInputError("Aspect is outside the local evidence contract.")
+            terms = json.loads(str(vocabulary[0]))[aspect]
+            polarity_terms = json.loads(
+                str(
+                    connection.execute(
+                        "SELECT value FROM store_meta WHERE key = 'polarity_terms'"
+                    ).fetchone()[0]
+                )
+            )
+            predicates = " OR ".join("lower(text) LIKE ?" for _ in terms)
+            placeholders = ",".join("?" for _ in product_ids)
+            rows = connection.execute(
+                f"SELECT source_line, text, rating FROM reviews "
+                f"WHERE parent_asin IN ({placeholders}) AND ({predicates})",
+                [*product_ids, *[f"%{term.lower()}%" for term in terms]],
+            ).fetchall()
+        finally:
+            connection.close()
+        model_labels = self._load_model_labels()
+        insufficient_count = 0
+        insufficient_low_rating_count = 0
+        model_direction_count = 0
+        model_off_topic_count = 0
+        model_unclear_count = 0
+        model_labeler: str | None = None
+        for source_line, text, rating in rows:
+            if _polarity(str(text), polarity_terms) != "insufficient":
+                continue
+            insufficient_count += 1
+            if rating is not None and rating <= 2:
+                insufficient_low_rating_count += 1
+            label = model_labels.get(f"{aspect}:{int(source_line)}")
+            if label is None:
+                continue
+            if label["polarity"] in ("supporting", "opposing", "conflicting"):
+                model_direction_count += 1
+            elif label["reason"] == "off_topic":
+                model_off_topic_count += 1
+            else:
+                model_unclear_count += 1
+            if model_labeler is None and label["labeler"]:
+                model_labeler = label["labeler"]
+        if insufficient_count == 0:
+            return None
+        note = (
+            f"词表盲区:匹配 {len(rows)} 条中 {insufficient_count} 条无法判方向,"
+            f"其中低星(1-2星) {insufficient_low_rating_count} 条。"
+            "方向未判不等于没有问题,建议优先抽查这部分低星评论。"
+        )
+        labeled_count = model_direction_count + model_off_topic_count + model_unclear_count
+        model_fields: dict[str, int | str | None] = {}
+        if labeled_count:
+            note += (
+                f"模型代标(仅提示,非机器判定,标注:{model_labeler}):"
+                f"{model_direction_count} 条判出方向、"
+                f"{model_off_topic_count} 条说的不是这个维度、"
+                f"{model_unclear_count} 条仍无法判断。"
+            )
+            if labeled_count < insufficient_count:
+                note += f"代标已覆盖 {labeled_count}/{insufficient_count} 条。"
+            model_fields = {
+                "model_direction_count": model_direction_count,
+                "model_off_topic_count": model_off_topic_count,
+                "model_unclear_count": model_unclear_count,
+                "model_labeler": model_labeler,
+            }
+        return LexiconBlindSpotView(
+            matched_count=len(rows),
+            insufficient_count=insufficient_count,
+            insufficient_low_rating_count=insufficient_low_rating_count,
+            note=note,
+            **model_fields,
+        )

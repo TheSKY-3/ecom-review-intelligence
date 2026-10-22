@@ -15,6 +15,11 @@ from fastapi.templating import Jinja2Templates
 
 from ecom_review_intelligence.workbench_contracts import (
     EvidenceDetail,
+    InsightRequest,
+    InsightView,
+    VerdictList,
+    VerdictRecord,
+    VerdictRequest,
     WorkbenchResumeRequest,
     WorkbenchRun,
     WorkbenchRunRequest,
@@ -23,6 +28,7 @@ from ecom_review_intelligence.workbench_service import (
     SyntheticWorkbenchService,
     WorkbenchEvidenceUnavailable,
     WorkbenchInputError,
+    WorkbenchInsightUnavailable,
     WorkbenchRunConflict,
     WorkbenchRunNotFound,
     WorkbenchService,
@@ -72,7 +78,11 @@ def assert_public_workbench_safe(value: Any) -> None:
             return
         if not isinstance(item, str):
             return
-        if re.search(r"(?<![A-Z0-9])B[A-Z0-9]{9}(?![A-Z0-9])", item, re.IGNORECASE):
+        if re.search(
+            r"(?<![A-Za-z0-9])B(?=[A-Za-z0-9]{9}(?![A-Za-z0-9]))(?=[A-Za-z0-9]*[0-9])[A-Za-z0-9]{9}",
+            item,
+            re.IGNORECASE,
+        ):
             raise ValueError("Public workbench response contains a product identifier.")
         if re.search(r"(?<![0-9a-f])[0-9a-f]{64}(?![0-9a-f])", item, re.IGNORECASE):
             raise ValueError("Public workbench response contains an evidence-like identifier.")
@@ -104,17 +114,28 @@ _PROHIBITED_KEYS = {
 }
 
 
-def create_workbench_app(service: WorkbenchService | None = None) -> FastAPI:
+def create_workbench_app(
+    service: WorkbenchService | None = None,
+    *,
+    extra_allowed_hosts: Sequence[str] = (),
+) -> FastAPI:
     app = FastAPI(title="ECom Review Intelligence Workbench", docs_url=None, redoc_url=None)
     backend = service or SyntheticWorkbenchService()
     package_root = Path(__file__).resolve().parent
     templates = Jinja2Templates(directory=package_root / "templates")
     app.mount("/static", StaticFiles(directory=package_root / "static"), name="static")
+    allowed_hosts = {
+        "127.0.0.1",
+        "localhost",
+        "testserver",
+    } | {
+        name.strip().casefold() for name in extra_allowed_hosts if name.strip()
+    }
 
     @app.middleware("http")
     async def security_headers(request: Request, call_next):
         hostname = request.headers.get("host", "").rsplit(":", 1)[0].casefold()
-        if hostname not in {"127.0.0.1", "localhost", "testserver"}:
+        if hostname not in allowed_hosts:
             response = _error(400, "INVALID_HOST", "Host is not allowed.")
         else:
             response = await call_next(request)
@@ -157,6 +178,17 @@ def create_workbench_app(service: WorkbenchService | None = None) -> FastAPI:
             "Evidence detail is only available for completed controlled local runs.",
         )
 
+    @app.exception_handler(WorkbenchInsightUnavailable)
+    async def insight_unavailable(
+        request: Request, error: WorkbenchInsightUnavailable
+    ) -> JSONResponse:
+        del request, error
+        return _error(
+            404,
+            "INSIGHT_UNAVAILABLE",
+            "The optional AI reading step is unavailable for this run.",
+        )
+
     @app.exception_handler(Exception)
     async def unknown_error(request: Request, error: Exception) -> JSONResponse:
         del request, error
@@ -173,10 +205,20 @@ def create_workbench_app(service: WorkbenchService | None = None) -> FastAPI:
 
     @app.get("/", include_in_schema=False)
     def workbench(request: Request):
+        product_options = backend.product_options() if hasattr(backend, "product_options") else ()
+        insight_available = (
+            bool(backend.insight_available())
+            if hasattr(backend, "insight_available")
+            else False
+        )
         return templates.TemplateResponse(
             request=request,
             name="workbench.html",
-            context={"mode": backend.mode},
+            context={
+                "mode": backend.mode,
+                "products": product_options,
+                "insight_available": insight_available,
+            },
         )
 
     @app.get("/favicon.ico", include_in_schema=False, status_code=204)
@@ -208,5 +250,25 @@ def create_workbench_app(service: WorkbenchService | None = None) -> FastAPI:
         # that exist for the aggregate public surface.
         assert_response_keys_safe(detail.model_dump(mode="json"))
         return detail
+
+    @app.post("/api/v1/insights", response_model=InsightView)
+    def create_insight(request: InsightRequest) -> InsightView:
+        if not getattr(backend, "insight_available", lambda: False)():
+            raise WorkbenchInsightUnavailable()
+        view = backend.run_insight(request.run_token, request.card_alias)
+        assert_public_workbench_safe(view.model_dump(mode="json"))
+        return view
+
+    @app.post("/api/v1/verdicts", status_code=201, response_model=VerdictRecord)
+    def record_verdict(request: VerdictRequest) -> VerdictRecord:
+        record = backend.record_verdict(request)
+        assert_public_workbench_safe(record.model_dump(mode="json"))
+        return record
+
+    @app.get("/api/v1/runs/{run_token}/verdicts", response_model=VerdictList)
+    def list_verdicts(run_token: str) -> VerdictList:
+        view = backend.list_verdicts(run_token)
+        assert_public_workbench_safe(view.model_dump(mode="json"))
+        return view
 
     return app

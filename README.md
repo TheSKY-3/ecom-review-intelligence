@@ -40,6 +40,28 @@
 
 > 数据对象为 Amazon Reviews 2023 公开数据集中的真实在售制冰机（AGLUCKY / GE Profile Opal / EUHOMY，评论数 4,241 / 4,236 / 3,481）。评论文本与记录级标识不出库。
 
+## 可选的一步：让模型读原文，但不能判"够不够"
+
+证据卡上的「AI 深入分析」是整条链路里唯一会把评论原文发给模型的地方，默认不启用：
+
+- 默认路径不联网、不花钱、没有密钥也能跑完整个流程；没有密钥时按钮直接置灰；
+- 点一下 = 读该维度抽样到的 5 条评论原文 + 调用 1 次模型，产出「能说什么 / 具体的点 / 读作无关的评论 / 不能说什么」；
+- 模型**不**判断证据够不够。那个问题在实验里没有稳定答案：手写计数规则跨两批人工标注从 0.65 掉到 0.35，模型探针 0.55 / 0.80 且宽松提示词有 37.5% 假阳性。决策记录见 [docs/decisions/phase-7-model-role.md](docs/decisions/phase-7-model-role.md)；
+- 四条机器可查的规矩把输出锁住：每条评论都必须有自己的判定、被判相关的必须至少被引用一次、被引用的必须被判为相关、每句引文必须是它自己那条评论的逐字子串。任一条不过就整段丢弃，页面只显示"引用未通过校验"和没通过的原因，可以再点一次；
+- 结果按（运行令牌，证据卡）缓存，再点不重复花钱；失败不缓存，所以重试的代价就是再花 1 次。
+
+实测：15 次真实调用 14 次可用（唯一失败是"判为相关却没引用"，重试即通过）。一次稳定失败的卡片（模型把供给的编号 E1–E5 自己改写成 R1–R5），定位后修在提示词层而不是放松校验，修完同一张卡 6/6 通过。
+
+## 人工核对记录：点一下，留一条可导出的证据
+
+运营对每张证据卡可以点「确认 / 存疑 / 驳回」。每次点击都会落盘成一行记录（运行别名、维度、商品、方向、强度、匹配/卡片数、时间），**不含评论原文、不含证据编号、不含路径**：
+
+```powershell
+.\.venv\Scripts\python.exe scripts/export_run_verdicts.py --run-token <token> --output review.md
+```
+
+导出的是"核对进度 n/m + 每张卡的判定表"，可以直接给不需要看原文的人。判定只能改不能清空：点另一个按钮就是改判，同一张卡始终只有最新一条生效。
+
 ## 两个值得讲的工程取舍
 
 - **检索负结果**：冻结案例对比后 FTS5/BM25 没有显示独立优势，项目没有为"技术栈好看"强行上向量库——同时记录该结论的循环偏向边界。技术选型服务于问题，而不是简历。
@@ -56,6 +78,15 @@ python -m venv .venv
 # 本地受控模式（真实本地数据，需先完成 P4 建库）：
 .\.venv\Scripts\python.exe scripts/run_phase7_workbench.py --mode local --acknowledge-local-data --project-root . --port 8765
 ```
+
+容器（默认合成数据，镜像里不含评论；真实数据用 local profile 挂载本机 `data/`）：
+
+```powershell
+docker compose up --build demo                    # http://127.0.0.1:8000
+docker compose --profile local up --build local   # http://127.0.0.1:8001
+```
+
+三个开关默认全部关闭，需要显式打开：绑非 loopback 要 `--allow-non-loopback`，读真实评论要 `--acknowledge-local-data`，外部域名要加进 `WORKBENCH_ALLOWED_HOSTS`（默认只接受 loopback 的 Host 头，用于挡 DNS rebinding）。细节见 [docs/deployment.md](docs/deployment.md)。
 
 完整工程细节、阶段 Gate 记录与 P6 replay/live 说明见 [docs/engineering-readme.md](docs/engineering-readme.md)、[docs/master-plan.md](docs/master-plan.md) 与 [docs/reports/](docs/reports/)。
 

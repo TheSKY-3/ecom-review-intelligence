@@ -116,3 +116,32 @@ python scripts/serve_demo.py --host 0.0.0.0 --allow-non-loopback --port 8000 --m
 - 没有用户体系:页面上的「确认/存疑/驳回」不需要登录,不要在多人共用的公网环境里跑 `local` 模式。
 - `local` 模式下 `data/` 必须可写:每次运行写一份 LangGraph checkpoint,每次点判定追加一行到 `data/processed/p7_workbench_verdicts.jsonl`。
 - 没有在 CI 里构建过镜像:写这份文件时开发机上没有 Docker,镜像只做了静态审查 + 入口脚本的本机实测。
+
+## 桌面版:双击运行的 exe(Windows)
+
+不想装 Python、也不想开浏览器的人,可以直接用打包好的单文件程序:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/build_desktop_app.ps1 -OneFile
+# 产物:output\desktop\EComReviewIntelligence.exe(本机实测 40.1 MB)
+```
+
+双击即可,不需要数据集、不需要网络、不需要 API key。程序会:
+
+- 内嵌 3 个商品的评论子集(11,958 条)与冻结配置,启动时在本机回环地址起服务;
+- 用系统 WebView 打开一个原生窗口,界面与浏览器版完全一致;
+- 把 checkpoint 与人工核对记录写到 `%LOCALAPPDATA%\EComReviewIntelligence\`(不污染安装目录);
+- 点「AI 深入分析」时,同样请你填自己的 DeepSeek key,密钥只存在当前窗口的内存里。
+
+包体构成与已知限制:
+
+| 项 | 值 |
+| --- | --- |
+| 格式 | PyInstaller `--onefile`,`--windowed` |
+| 体积 | 40.1 MB(其中数据子集 10.9 MB) |
+| 平台 | **仅 Windows**(pywebview 走系统 WebView2;Win10/11 自带) |
+| 启动 | 首次启动需解包到临时目录,约 2-4 秒 |
+| 数据 | 固定子集快照,不含完整类目库 |
+| 未做的事 | 没有代码签名,Windows 可能提示"未知发布者" |
+
+`--smoke` 参数可以在无界面的情况下自检(构建脚本用它做冒烟):退出码 0 表示服务、页面与资源都正常。

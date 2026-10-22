@@ -92,7 +92,12 @@ def build_parser() -> ArgumentParser:
         description="Serve the workbench outside the loopback-only desktop CLI.",
     )
     parser.add_argument("--host", default="127.0.0.1")
-    parser.add_argument("--port", type=int, default=8000)
+    parser.add_argument(
+        "--port",
+        type=int,
+        default=None,
+        help="Defaults to $PORT when set (Render, Fly, Cloud Run), else 8000.",
+    )
     parser.add_argument("--mode", choices=("synthetic", "bundled", "local"), default="bundled")
     parser.add_argument("--project-root", type=Path, default=Path.cwd())
     parser.add_argument(
@@ -127,6 +132,21 @@ def resolve_allowed_hosts(args: Namespace) -> tuple[str, ...]:
     return tuple(dict.fromkeys(name.strip() for name in names if name.strip()))
 
 
+def resolve_port(args: Namespace) -> int:
+    """Platforms hand the port in $PORT; an explicit flag still wins."""
+
+    if args.port is not None:
+        return args.port
+    raw = os.environ.get("PORT", "8000").strip()
+    try:
+        port = int(raw)
+    except ValueError as error:
+        raise SystemExit(f"PORT is not a number: {raw!r}") from error
+    if not 1 <= port <= 65535:
+        raise SystemExit(f"PORT is outside the allowed range: {port}")
+    return port
+
+
 def validate(args: Namespace) -> None:
     if args.host not in _LOOPBACK and not args.allow_non_loopback:
         raise SystemExit(
@@ -134,7 +154,7 @@ def validate(args: Namespace) -> None:
             f"{args.host} without --allow-non-loopback: that exposes the workbench "
             "beyond this machine."
         )
-    if not 1 <= args.port <= 65535:
+    if args.port is not None and not 1 <= args.port <= 65535:
         raise SystemExit("Port is outside the allowed range.")
     if args.mode == "local" and not args.acknowledge_local_data:
         raise SystemExit("--mode local reads the private category store; pass --acknowledge-local-data.")
@@ -147,7 +167,8 @@ def main(argv: Sequence[str] | None = None, *, server_runner=uvicorn.run) -> int
         Path(args.project_root).resolve(), args.mode, args.verdicts_path
     )
     app = create_workbench_app(service, extra_allowed_hosts=resolve_allowed_hosts(args))
-    server_runner(app, host=args.host, port=args.port, log_level="info")
+    port = resolve_port(args)
+    server_runner(app, host=args.host, port=port, log_level="info")
     return 0
 
 

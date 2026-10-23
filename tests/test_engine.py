@@ -16,6 +16,7 @@ from ecom_review_intelligence.engine import (
     compute_store_content_sha256,
     initialize_store,
     query_aspect,
+    query_stratified_aspect,
     verify_citation,
     write_phase4_outputs,
 )
@@ -230,3 +231,56 @@ def _canonical_sha(value: dict[str, object]) -> str:
     return hashlib.sha256(
         json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode()
     ).hexdigest()
+
+
+def test_stratified_sample_does_not_read_only_the_earliest_reviews(tmp_path: Path) -> None:
+    store_path = tmp_path / "evidence.sqlite"
+    snapshot_id = "a" * 64
+    initialize_store(
+        store_path,
+        snapshot_id=snapshot_id,
+        contract_sha256="b" * 64,
+        aspect_terms={"noise": ("noise",)},
+        polarity_terms={"supporting": ("quiet",), "opposing": ("loud",)},
+    )
+    rows = [
+        (1, "quiet noise a", 5.0),
+        (2, "quiet noise b", 5.0),
+        (3, "quiet noise c", 5.0),
+        (4, "quiet noise d", 5.0),
+        (5, "quiet noise e", 5.0),
+        (6, "loud noise f", 1.0),
+        (7, "loud noise g", 1.0),
+        (8, "noise h", 3.0),
+    ]
+    with sqlite3.connect(store_path) as connection:
+        connection.execute("INSERT INTO products(parent_asin, title) VALUES (?, ?)", ("p", "P"))
+        connection.executemany(
+            """
+            INSERT INTO reviews(
+                evidence_id, source_line, parent_asin, text, rating, timestamp, verified_purchase, helpful_vote
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            [
+                (compute_evidence_id(snapshot_id, line), line, "p", text, rating, line, 1, 0)
+                for line, text, rating in rows
+            ],
+        )
+        connection.executemany(
+            "INSERT INTO reviews_fts(rowid, text) VALUES (?, ?)",
+            [(line, text) for line, text, _ in rows],
+        )
+
+    naive = query_aspect(store_path, ("p",), "noise", limit=5)
+    assert all(evidence.rating == 5.0 for evidence in naive.evidence)
+
+    sample = query_stratified_aspect(store_path, ("p",), "noise", limit=5)
+    ratings = [evidence.rating for evidence in sample.evidence]
+    assert len(sample.evidence) == 5
+    assert 1.0 in ratings and any(rating >= 4 for rating in ratings)
+    assert [evidence.source_line for evidence in sample.evidence] == [1, 2, 6, 7, 8]
+
+    again = query_stratified_aspect(store_path, ("p",), "noise", limit=5)
+    assert [evidence.evidence_id for evidence in again.evidence] == [
+        evidence.evidence_id for evidence in sample.evidence
+    ]

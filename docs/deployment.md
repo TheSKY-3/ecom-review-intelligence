@@ -115,7 +115,8 @@ python scripts/serve_demo.py --host 0.0.0.0 --allow-non-loopback --port 8000 --m
 - 没有 TLS,没有反向代理:这是本地/内网演示,公网请在前面放一层。
 - 没有用户体系:页面上的「确认/存疑/驳回」不需要登录,不要在多人共用的公网环境里跑 `local` 模式。
 - `local` 模式下 `data/` 必须可写:每次运行写一份 LangGraph checkpoint,每次点判定追加一行到 `data/processed/p7_workbench_verdicts.jsonl`。
-- 没有在 CI 里构建过镜像:写这份文件时开发机上没有 Docker,镜像只做了静态审查 + 入口脚本的本机实测。
+- 没有在 CI 里构建过镜像:镜像是 2026-10-23 在开发机的 Docker Desktop 上手工构建并实测的,没有接 CI。
+- 那次实测做了什么:`demo` 镜像 341 MB,非 root(uid 10001),`HEALTHCHECK /health`;`demo` 与 `local` 两个 profile 都起着跑通了完整流程(诊断 766/5、对比 2234/10、分诊 2929/10),容器内人工判定落盘、无密钥时显示「未配置密钥」、访问者自带 key 的路径各验一遍。`local` profile 要挂 165 MB 私有库,只在私有仓库里跑通。
 
 ## 桌面版:双击运行的 exe(Windows)
 

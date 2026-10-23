@@ -40,7 +40,12 @@ from ecom_review_intelligence.agent_tools import (
     ProductResolver,
 )
 from ecom_review_intelligence.agent_trace import append_local_trace, serialize_public_trace
-from ecom_review_intelligence.engine import _polarity, query_aspect, verify_citation
+from ecom_review_intelligence.engine import (
+    _polarity,
+    query_aspect,
+    query_stratified_aspect,
+    verify_citation,
+)
 from ecom_review_intelligence.model_gateway import (
     GatewayError,
     InsightGateway,
@@ -963,7 +968,7 @@ class P6BackedWorkbenchService(SyntheticWorkbenchService):
             raise WorkbenchInsightUnavailable()
         _alias, product_id, aspect = match
         limit = min(int(self._config["retrieval_limit_per_aspect"]), MAX_REVIEWS)
-        result = query_aspect(self._store_path, (product_id,), aspect, limit=limit)
+        result = query_stratified_aspect(self._store_path, (product_id,), aspect, limit=limit)
         reviews = [
             (f"E{index}", evidence.text)
             for index, evidence in enumerate(result.evidence, start=1)

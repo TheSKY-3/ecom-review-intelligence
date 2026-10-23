@@ -323,6 +323,131 @@ def query_aspect(
     return AspectQueryResult(aspect=aspect, strength=_strength(len(evidence)), evidence=evidence)
 
 
+_INSIGHT_SAMPLE_QUOTAS: tuple[tuple[str, int], ...] = (
+    ("low", 2),
+    ("high", 2),
+    ("mid", 1),
+    ("unknown", 1),
+)
+
+
+def _rating_bucket(rating: float | None) -> str:
+    if rating is None:
+        return "unknown"
+    if rating <= 2:
+        return "low"
+    if rating == 3:
+        return "mid"
+    return "high"
+
+
+def select_stratified_evidence(
+    candidates: list[sqlite3.Row], limit: int
+) -> list[sqlite3.Row]:
+    """Pick a deterministic rating-stratified sample from per-bucket candidates.
+
+    Review files are ordered by download order, so taking the first rows would
+    read the oldest (and typically most positive) reviews of a product. This
+    keeps every click reproducible while covering both ends of the rating range.
+    """
+
+    by_bucket: dict[str, list[sqlite3.Row]] = {"low": [], "mid": [], "high": [], "unknown": []}
+    for row in candidates:
+        by_bucket[_rating_bucket(row["rating"])].append(row)
+    for bucket in by_bucket.values():
+        bucket.sort(key=lambda row: row["source_line"])
+
+    picked: list[sqlite3.Row] = []
+    for bucket, quota in _INSIGHT_SAMPLE_QUOTAS:
+        picked.extend(by_bucket[bucket][:quota])
+
+    if len(picked) < limit:
+        chosen = {id(row) for row in picked}
+        leftovers = sorted(
+            (row for bucket in by_bucket.values() for row in bucket if id(row) not in chosen),
+            key=lambda row: row["source_line"],
+        )
+        picked.extend(leftovers[: limit - len(picked)])
+
+    sample = picked[:limit]
+    sample.sort(key=lambda row: row["source_line"])
+    return sample
+
+
+def query_stratified_aspect(
+    store_path: Path,
+    parent_asins: tuple[str, ...],
+    aspect: str,
+    *,
+    limit: int,
+) -> AspectQueryResult:
+    """Sample a frozen aspect with a fixed rating mix instead of the first rows.
+
+    Used by the opt-in AI step: the model explains a sample, so that sample must
+    not be "the five oldest reviews" of an otherwise large matched set.
+    """
+
+    if not parent_asins:
+        raise EngineError("At least one product parent_asin is required.")
+    if limit <= 0:
+        raise EngineError("Query limit must be positive.")
+    with _open_sqlite(store_path) as connection:
+        connection.row_factory = sqlite3.Row
+        metadata = dict(connection.execute("SELECT key, value FROM store_meta"))
+        aspect_terms = json.loads(metadata["aspect_terms"])
+        if aspect not in aspect_terms:
+            raise EngineError("Requested aspect is not enabled by the frozen contract.")
+        polarity_terms = json.loads(metadata["polarity_terms"])
+        product_placeholders = ",".join("?" for _ in parent_asins)
+        term_predicates = " OR ".join("lower(text) LIKE ?" for _ in aspect_terms[aspect])
+        rows = connection.execute(
+            f"""
+            WITH matched AS (
+                SELECT evidence_id, source_line, parent_asin, text, rating, timestamp,
+                       verified_purchase, helpful_vote,
+                       CASE
+                           WHEN rating IS NULL THEN 'unknown'
+                           WHEN rating <= 2 THEN 'low'
+                           WHEN rating = 3 THEN 'mid'
+                           ELSE 'high'
+                       END AS bucket
+                FROM reviews
+                WHERE parent_asin IN ({product_placeholders}) AND ({term_predicates})
+            ),
+            ranked AS (
+                SELECT *, row_number() OVER (
+                    PARTITION BY bucket ORDER BY source_line
+                ) AS bucket_rank
+                FROM matched
+            )
+            SELECT * FROM ranked WHERE bucket_rank <= ? ORDER BY bucket, bucket_rank
+            """,
+            [
+                *parent_asins,
+                *[f"%{term.lower()}%" for term in aspect_terms[aspect]],
+                limit,
+            ],
+        ).fetchall()
+
+    evidence = tuple(
+        Evidence(
+            evidence_id=row["evidence_id"],
+            source_line=row["source_line"],
+            parent_asin=row["parent_asin"],
+            text=row["text"],
+            rating=row["rating"],
+            timestamp=row["timestamp"],
+            verified_purchase=None
+            if row["verified_purchase"] is None
+            else bool(row["verified_purchase"]),
+            helpful_vote=row["helpful_vote"],
+            polarity=_polarity(row["text"], polarity_terms),
+        )
+        for row in select_stratified_evidence(rows, limit)
+    )
+    return AspectQueryResult(aspect=aspect, strength=_strength(len(evidence)), evidence=evidence)
+
+
 def fts_query_aspect(
     store_path: Path,
     parent_asins: tuple[str, ...],

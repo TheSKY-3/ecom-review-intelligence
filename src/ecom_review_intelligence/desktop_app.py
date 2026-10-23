@@ -10,8 +10,7 @@ import socket
 import sys
 import threading
 import time
-import urllib.error
-import urllib.request
+import traceback
 from collections.abc import Sequence
 from importlib import import_module
 from pathlib import Path
@@ -35,6 +34,18 @@ _LOCAL_STORE_PATH = Path("data/processed/ice_makers_evidence.sqlite")
 
 class DesktopLaunchError(RuntimeError):
     """Raised when the desktop shell cannot start its local workbench."""
+
+
+def _record_startup_failure(message: str) -> Path | None:
+    """Keep the last startup failure on disk; a windowed app has no other channel."""
+
+    try:
+        path = state_dir() / "last-startup-error.log"
+        stamp = time.strftime("%Y-%m-%dT%H:%M:%S")
+        path.write_text(f"{stamp}\n{message}\n", encoding="utf-8")
+        return path
+    except Exception:  # noqa: BLE001 - diagnostics must never mask the original failure
+        return None
 
 
 def _show_error(title: str, message: str) -> None:
@@ -184,20 +195,52 @@ def _load_local_service(project_root: Path) -> P6BackedWorkbenchService:
     )
 
 
+def _probe_health(port: int, *, timeout: float = 0.5) -> tuple[dict[str, Any] | None, str]:
+    """Ask the local server for /health over a plain socket.
+
+    urllib is a large surface to trust inside a frozen bundle; a raw loopback request
+    keeps the startup gate to what it actually needs: one GET, one JSON body.
+    """
+
+    request = f"GET /health HTTP/1.0\r\nHost: {HOST}\r\nConnection: close\r\n\r\n".encode()
+    try:
+        with socket.create_connection((HOST, port), timeout=timeout) as connection:
+            connection.settimeout(timeout)
+            connection.sendall(request)
+            chunks: list[bytes] = []
+            while True:
+                chunk = connection.recv(4096)
+                if not chunk:
+                    break
+                chunks.append(chunk)
+    except OSError as error:
+        return None, f"{type(error).__name__}: {error}"
+    raw = b"".join(chunks)
+    head, _, body = raw.partition(b"\r\n\r\n")
+    status_line = head.split(b"\r\n", 1)[0]
+    if b" 200 " not in status_line:
+        return None, f"unexpected status {status_line!r}"
+    try:
+        return json.loads(body), ""
+    except json.JSONDecodeError as error:
+        return None, f"unreadable body: {error}"
+
+
 def _wait_for_health(
-    port: int, *, expected_mode: str, timeout: float = STARTUP_TIMEOUT_SECONDS
+    port: int,
+    *,
+    expected_mode: str,
+    timeout: float = STARTUP_TIMEOUT_SECONDS,
+    server_failure: list[str] | None = None,
 ) -> None:
     deadline = time.monotonic() + timeout
-    url = f"http://{HOST}:{port}/health"
-    last_error: Exception | None = None
+    last_error = ""
     while time.monotonic() < deadline:
-        try:
-            with urllib.request.urlopen(url, timeout=0.5) as response:
-                payload = json.loads(response.read())
-                if response.status == 200 and payload.get("mode") == expected_mode:
-                    return
-        except (OSError, urllib.error.URLError) as error:
-            last_error = error
+        if server_failure:
+            raise DesktopLaunchError("The local workbench server stopped: " + server_failure[0])
+        payload, last_error = _probe_health(port)
+        if payload is not None and payload.get("mode") == expected_mode:
+            return
         time.sleep(0.05)
     detail = f" ({last_error})" if last_error else ""
     raise DesktopLaunchError(f"The local workbench did not become ready in time{detail}.")
@@ -215,15 +258,24 @@ def _start_server(service: Any) -> tuple[uvicorn.Server, threading.Thread, socke
         log_level="error",
     )
     server = uvicorn.Server(config)
+    failures: list[str] = []
+
+    def _serve() -> None:
+        # Keep the traceback: a dead server thread otherwise only shows up as a timeout,
+        # and a packaged app has no console to read it from.
+        try:
+            server.run(sockets=[sock])
+        except BaseException:  # noqa: BLE001 - re-raised as a startup error below
+            failures.append(traceback.format_exc())
+
     thread = threading.Thread(
-        target=server.run,
-        kwargs={"sockets": [sock]},
+        target=_serve,
         name="ecom-workbench-server",
         daemon=True,
     )
     thread.start()
     try:
-        _wait_for_health(port, expected_mode=str(service.mode))
+        _wait_for_health(port, expected_mode=str(service.mode), server_failure=failures)
     except Exception:
         server.should_exit = True
         thread.join(timeout=3)
@@ -296,8 +348,10 @@ def _parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
+    arguments = list(sys.argv[1:] if argv is None else argv)
+    smoke_requested = "--smoke" in arguments
     try:
-        args = _parse_args(argv)
+        args = _parse_args(arguments)
         prefer_bundled = args.bundled == "bundled" or (
             args.bundled == "auto" and bool(getattr(sys, "frozen", False))
         )
@@ -313,7 +367,15 @@ def main(argv: Sequence[str] | None = None) -> int:
     except SystemExit:
         raise
     except Exception as error:  # noqa: BLE001 - desktop boundary shows a fixed user-facing error
-        _show_error("ECom Review Intelligence", "The desktop app could not start.\n\n" + str(error))
+        message = "The desktop app could not start.\n\n" + str(error)
+        recorded = _record_startup_failure(message)
+        if smoke_requested:
+            # A checked launch must fail fast: blocking on a modal box is how a broken
+            # build turns into a timeout instead of a readable reason.
+            payload = {"status": "FAILED", "message": str(error), "log": str(recorded or "")}
+            print(json.dumps(payload, ensure_ascii=False), file=sys.stderr)
+            return 1
+        _show_error("ECom Review Intelligence", message)
         return 1
     return 0
 

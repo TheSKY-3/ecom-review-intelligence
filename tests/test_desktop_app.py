@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 import json
+import socket
+import threading
+from http.server import BaseHTTPRequestHandler, HTTPServer
 from urllib.request import urlopen
 
 import pytest
@@ -102,3 +105,83 @@ def test_state_directory_is_created_under_localappdata(tmp_path, monkeypatch) ->
 
     assert path == tmp_path / "EComReviewIntelligence"
     assert path.is_dir()
+
+
+class _HealthHandler(BaseHTTPRequestHandler):
+    def do_GET(self) -> None:
+        body = json.dumps({"status": "ok", "mode": "local"}).encode()
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def log_message(self, *args: object) -> None:
+        return
+
+
+def test_health_probe_accepts_the_local_server_and_reports_a_closed_port() -> None:
+    from ecom_review_intelligence import desktop_app
+
+    server = HTTPServer(("127.0.0.1", 0), _HealthHandler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        payload, error = desktop_app._probe_health(server.server_address[1])
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=2)
+
+    assert error == ""
+    assert payload is not None and payload["mode"] == "local"
+
+    closed = socket.socket()
+    closed.bind(("127.0.0.1", 0))
+    unused_port = closed.getsockname()[1]
+    closed.close()
+    payload, error = desktop_app._probe_health(unused_port)
+
+    assert payload is None
+    assert error
+
+
+def test_smoke_failure_reports_a_reason_instead_of_blocking_on_a_dialog(
+    tmp_path, monkeypatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    from ecom_review_intelligence import desktop_app
+
+    dialogs: list[str] = []
+
+    def _boom(**_kwargs) -> None:
+        raise desktop_app.DesktopLaunchError("The local workbench did not become ready in time.")
+
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
+    monkeypatch.setattr(desktop_app, "smoke_test", _boom)
+    monkeypatch.setattr(desktop_app, "_show_error", lambda *args: dialogs.append(args))
+
+    assert desktop_app.main(["--smoke"]) == 1
+
+    assert dialogs == []
+    payload = json.loads(capsys.readouterr().err.strip())
+    assert payload["status"] == "FAILED"
+    assert "did not become ready" in payload["message"]
+    assert (tmp_path / "EComReviewIntelligence" / "last-startup-error.log").is_file()
+
+
+def test_windowed_failure_keeps_a_log_and_shows_the_dialog(tmp_path, monkeypatch) -> None:
+    from ecom_review_intelligence import desktop_app
+
+    dialogs: list[tuple[str, str]] = []
+
+    def _boom(**_kwargs) -> None:
+        raise desktop_app.DesktopLaunchError("The bundle is broken.")
+
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
+    monkeypatch.setattr(desktop_app, "launch_desktop", _boom)
+    monkeypatch.setattr(desktop_app, "_show_error", lambda title, message: dialogs.append((title, message)))
+
+    assert desktop_app.main([]) == 1
+    assert dialogs and "The bundle is broken." in dialogs[0][1]
+    log = tmp_path / "EComReviewIntelligence" / "last-startup-error.log"
+    assert "The bundle is broken." in log.read_text(encoding="utf-8")

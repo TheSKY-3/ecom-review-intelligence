@@ -145,4 +145,10 @@ powershell -ExecutionPolicy Bypass -File scripts/build_desktop_app.ps1 -OneFile
 | 数据 | 固定子集快照,不含完整类目库 |
 | 未做的事 | 没有代码签名,Windows 可能提示"未知发布者" |
 
-`--smoke` 参数可以在无界面的情况下自检(构建脚本用它做冒烟):退出码 0 表示服务、页面与资源都正常。
+`--smoke` 参数可以在无界面的情况下自检(构建脚本用它做冒烟):退出码 0 表示服务、页面与资源都正常。自检用原生 socket 发一次 `GET /health`,不经过 urllib。
+
+启动失败时(自检或双击):
+
+- 原因会写到 `%LOCALAPPDATA%\EComReviewIntelligence\last-startup-error.log`;
+- `--smoke` 直接把 `{"status": "FAILED", "message": ...}` 打到 stderr 并返回 1,不弹窗 —— 否则自检失败会变成一个没人点的模态框,表现为"卡住 120 秒";
+- 双击启动则弹窗显示同一句话,方便普通用户看到。

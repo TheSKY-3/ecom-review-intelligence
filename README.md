@@ -23,6 +23,12 @@
 
 ![chat trace](docs/assets/p7-workbench-chat-trace.png)
 
+输出长这样（下图是「AI 深入分析」的实测结果；评论原文按数据边界不贴，只保留归纳与编号）：
+
+![insight output](docs/assets/p7-workbench-insight.png)
+
+对话回答也按同一个「能说什么 / 具体的点 / 不能说什么」框架组织，每句带引用编号；公开仓库只展示归纳，不展示评论原句。
+
 「模型设置」里填自己的 DeepSeek key 才能启用两条模型步骤；key 只存在当前浏览器，关闭即清：
 
 ![model settings](docs/assets/p7-workbench-settings.png)

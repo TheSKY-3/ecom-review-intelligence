@@ -57,6 +57,8 @@ const state = {
   productLabels: {},
   insightAvailable: document.querySelector("main")?.dataset.insightAvailable === "true",
   insightByo: document.querySelector("main")?.dataset.insightByo === "true",
+  runQuestion: "",
+  runQuestionToken: null,
 };
 const form = document.querySelector("#run-form");
 const formError = document.querySelector("#form-error");
@@ -275,6 +277,11 @@ async function loadEvidenceDetail(runToken, alias, container, button) {
 const insightStatusCopy = {
   MODEL_NOT_CONFIGURED: "未配置模型密钥,这一步不可用;其他分析与展示不受影响。",
   MODEL_UNAVAILABLE: "模型暂时不可用,结果未生成;其他分析与展示不受影响。",
+  API_UNAVAILABLE: "模型暂时不可用,结果未生成;其他分析与展示不受影响。",
+  KEY_REJECTED: "DeepSeek 拒绝了这把密钥(无效、过期或没有权限);请在右上角「模型设置」里换一个。",
+  MODEL_RATE_LIMITED: "模型服务现在限流,等几十秒再点一次。",
+  MODEL_REQUEST_REJECTED: "模型服务不接受这次请求(模型或参数不被接受);请在右上角「模型设置」换一个模型再试。",
+  MODEL_OUTPUT_INVALID: "模型这次没有按约定格式返回(偶尔发生),再点一次「分析」重试。",
   NO_REVIEW_EVIDENCE: "这张证据卡没有可读取的评论样本。",
 };
 
@@ -384,25 +391,186 @@ function renderInsight(payload) {
 }
 
 const INSIGHT_KEY_STORAGE = "wb-insight-key";
+const INSIGHT_KEY_REMEMBER_STORAGE = "wb-insight-key-remember";
+const INSIGHT_MODEL_STORAGE = "wb-insight-model";
+
+function sanitizeInsightKey(value) {
+  // HTTP header values must be Latin-1. Keys copied from a chat or a web page
+  // sometimes carry invisible characters (zero-width space, full-width
+  // punctuation); keeping printable ASCII makes the header sent to the server
+  // valid and recovers a key that picked up one stray character.
+  return String(value || "").replace(/[^\x21-\x7e]/g, "");
+}
 
 function readInsightKey() {
   try {
-    return sessionStorage.getItem(INSIGHT_KEY_STORAGE) || "";
+    for (const storage of [sessionStorage, localStorage]) {
+      const stored = storage.getItem(INSIGHT_KEY_STORAGE) || "";
+      if (!stored) continue;
+      const clean = sanitizeInsightKey(stored);
+      if (clean !== stored) {
+        if (clean) {
+          storage.setItem(INSIGHT_KEY_STORAGE, clean);
+        } else {
+          storage.removeItem(INSIGHT_KEY_STORAGE);
+        }
+      }
+      if (clean) return clean;
+    }
+    return "";
   } catch (error) {
     return "";
   }
 }
 
-function writeInsightKey(value) {
+function writeInsightKey(value, remember = false) {
+  const clean = sanitizeInsightKey(value);
+  const target = remember ? localStorage : sessionStorage;
+  const other = remember ? sessionStorage : localStorage;
   try {
-    if (value) {
-      sessionStorage.setItem(INSIGHT_KEY_STORAGE, value);
+    if (clean) {
+      target.setItem(INSIGHT_KEY_STORAGE, clean);
     } else {
-      sessionStorage.removeItem(INSIGHT_KEY_STORAGE);
+      target.removeItem(INSIGHT_KEY_STORAGE);
     }
   } catch (error) {
     /* storage unavailable: the key then only lives for this call */
   }
+  try {
+    other.removeItem(INSIGHT_KEY_STORAGE);
+  } catch (error) {
+    /* ignore a storage this browser blocks */
+  }
+  try {
+    localStorage.setItem(INSIGHT_KEY_REMEMBER_STORAGE, remember ? "true" : "false");
+  } catch (error) {
+    /* ignore a storage this browser blocks */
+  }
+}
+
+function readInsightModel() {
+  try {
+    const stored = String(localStorage.getItem(INSIGHT_MODEL_STORAGE) || "").trim();
+    if (!stored) return "";
+    const select = document.querySelector("#settings-model");
+    if (select && [...select.options].some((option) => option.value === stored)) {
+      return stored;
+    }
+    return "";
+  } catch (error) {
+    return "";
+  }
+}
+
+function writeInsightModel(value) {
+  try {
+    const clean = String(value || "").trim();
+    if (clean) {
+      localStorage.setItem(INSIGHT_MODEL_STORAGE, clean);
+    } else {
+      localStorage.removeItem(INSIGHT_MODEL_STORAGE);
+    }
+  } catch (error) {
+    /* ignore a storage this browser blocks */
+  }
+}
+
+function insightRequestHeaders() {
+  const headers = { "Content-Type": "application/json" };
+  const userKey = readInsightKey();
+  if (userKey) headers["X-Insight-Key"] = userKey;
+  const model = readInsightModel();
+  if (model) headers["X-Insight-Model"] = model;
+  return headers;
+}
+
+const settingsToggle = document.querySelector("#settings-toggle");
+const settingsDialog = document.querySelector("#settings-dialog");
+const settingsKey = document.querySelector("#settings-key");
+const settingsRemember = document.querySelector("#settings-remember");
+const settingsModel = document.querySelector("#settings-model");
+const settingsStatus = document.querySelector("#settings-status");
+const settingsNote = document.querySelector("#settings-note");
+const settingsModelLabel = document.querySelector("#settings-model-label");
+
+function storedKeyIsRemembered() {
+  try {
+    return Boolean(localStorage.getItem(INSIGHT_KEY_STORAGE));
+  } catch (error) {
+    return false;
+  }
+}
+
+function modelLabelFor(value) {
+  if (!settingsModel || !value) return "";
+  const option = [...settingsModel.options].find((item) => item.value === value);
+  return option ? option.textContent : "";
+}
+
+function applySettingsLabel() {
+  if (!settingsModelLabel) return;
+  const model = readInsightModel() || settingsModel?.value || "";
+  const label = modelLabelFor(model);
+  settingsModelLabel.textContent = label ? ` · ${label}` : "";
+}
+
+function openSettings() {
+  if (!settingsDialog) return;
+  const userKey = readInsightKey();
+  if (settingsKey) settingsKey.value = userKey;
+  if (settingsRemember) settingsRemember.checked = userKey ? storedKeyIsRemembered() : true;
+  if (settingsModel) {
+    settingsModel.value = readInsightModel() || settingsModel.options[0]?.value || "";
+  }
+  if (settingsNote) settingsNote.textContent = "";
+  if (settingsStatus) {
+    settingsStatus.textContent = userKey
+      ? "密钥已保存在这个浏览器里;换模型只影响这台电脑上的这次使用。"
+      : "还没有保存密钥。填一把 DeepSeek API Key 后,AI 分析与问答才可用。";
+  }
+  if (typeof settingsDialog.showModal === "function") {
+    settingsDialog.showModal();
+  } else {
+    settingsDialog.setAttribute("open", "");
+  }
+  settingsKey?.focus();
+}
+
+function saveSettings() {
+  if (!settingsKey) return;
+  const raw = settingsKey.value.trim();
+  const clean = sanitizeInsightKey(raw);
+  if (raw && clean.length < 8) {
+    if (settingsNote) {
+      settingsNote.textContent =
+        "密钥只能包含英文字母、数字和 - _ 等符号;刚才的内容里有中文或不可见字符,请重新粘贴。";
+    }
+    settingsKey.focus();
+    settingsKey.select();
+    return;
+  }
+  writeInsightKey(clean, Boolean(settingsRemember?.checked));
+  writeInsightModel(settingsModel?.value);
+  applySettingsLabel();
+  if (settingsDialog?.open) settingsDialog.close();
+}
+
+if (settingsToggle && settingsDialog) {
+  applySettingsLabel();
+  settingsToggle.addEventListener("click", openSettings);
+  settingsDialog.querySelector("#settings-save")?.addEventListener("click", saveSettings);
+  settingsDialog.querySelector("#settings-clear")?.addEventListener("click", () => {
+    writeInsightKey("");
+    if (settingsKey) settingsKey.value = "";
+    if (settingsNote) settingsNote.textContent = "密钥已从浏览器里清除。";
+    applySettingsLabel();
+  });
+  settingsDialog
+    .querySelector("#settings-close")
+    ?.addEventListener("click", () => settingsDialog.close());
+  settingsDialog.addEventListener("close", () => {
+    if (settingsNote) settingsNote.textContent = "";
+  });
 }
 
 function openInsightKeyPanel(panel, run) {
@@ -423,11 +591,15 @@ function openInsightKeyPanel(panel, run) {
   );
   submit.addEventListener("click", () => {
     const value = input.value.trim();
-    if (!value) {
+    const clean = sanitizeInsightKey(value);
+    if (clean.length < 8) {
+      note.textContent =
+        "密钥只能包含英文字母、数字和 - _ 等符号;刚才的内容里有中文或不可见字符,请重新粘贴。";
       input.focus();
+      input.select();
       return;
     }
-    writeInsightKey(value);
+    writeInsightKey(clean, storedKeyIsRemembered());
     panel.hidden = true;
     run();
   });
@@ -436,18 +608,21 @@ function openInsightKeyPanel(panel, run) {
   input.focus();
 }
 
-async function loadInsight(runToken, cardAlias, container, button, userKey = "") {
+async function loadInsight(runToken, cardAlias, container, button) {
   button.disabled = true;
   button.textContent = "分析中…";
-  const headers = { "Content-Type": "application/json" };
-  if (userKey) {
-    headers["X-Insight-Key"] = userKey;
-  }
+  const headers = insightRequestHeaders();
   try {
+    const question =
+      state.runQuestionToken === runToken ? state.runQuestion.slice(0, 300) : "";
     const payload = await requestJson("/api/v1/insights", {
       method: "POST",
       headers,
-      body: JSON.stringify({ run_token: runToken, card_alias: cardAlias }),
+      body: JSON.stringify({
+        run_token: runToken,
+        card_alias: cardAlias,
+        ...(question ? { question } : {}),
+      }),
     });
     container.replaceChildren(renderInsight(payload));
     container.hidden = false;
@@ -543,6 +718,7 @@ function renderEvidence(evidence) {
     card.className = "evidence-item";
     card.tabIndex = -1;
     card.dataset.alias = item.evidence_alias;
+    card.dataset.productCode = item.product_code;
     const meta = document.createElement("div");
     meta.className = "evidence-meta";
     meta.append(textElement("span", "", `证据卡 ${item.evidence_alias.replace("EV-", "")} · ${productLabel(item.product_code)}`));
@@ -626,7 +802,6 @@ function renderEvidence(evidence) {
               item.evidence_alias,
               insightBox,
               insightToggle,
-              readInsightKey(),
             );
             return;
           }
@@ -636,7 +811,6 @@ function renderEvidence(evidence) {
               item.evidence_alias,
               insightBox,
               insightToggle,
-              readInsightKey(),
             ),
           );
         });
@@ -724,7 +898,7 @@ function renderClarification(payload) {
   output.append(choices);
 }
 
-function renderResult(payload) {
+function renderResult(payload, options = {}) {
   state.runToken = payload.run_token;
   payload.products.forEach((product) => { state.productLabels[product.code] = product.label; });
   document.querySelector("#run-alias").textContent = payload.run_alias;
@@ -740,6 +914,8 @@ function renderResult(payload) {
   renderCoverage(payload);
   renderProductSignals(payload);
   renderEvidence(payload.evidence);
+  if (!options.keepChat) resetQa();
+  if (chatRunHint) chatRunHint.textContent = `当前运行: ${payload.run_alias}`;
   setVerdictNotice("");
   loadVerdicts(payload.run_token);
   if (payload.clarification) renderClarification(payload);
@@ -771,6 +947,7 @@ form.addEventListener("submit", async (event) => {
   formError.textContent = "";
   submitButton.disabled = true;
   try {
+    const question = document.querySelector("#question").value.trim();
     const payload = await requestJson("/api/v1/runs", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -779,9 +956,11 @@ form.addEventListener("submit", async (event) => {
         product_codes: selectedProducts(),
         product_query: selectedProducts().length ? null : "countertop",
         aspect: document.querySelector("#aspect").value,
-        question: document.querySelector("#question").value,
+        question,
       }),
     });
+    state.runQuestion = question;
+    state.runQuestionToken = payload.run_token;
     renderResult(payload);
   } catch (error) {
     setStatus("PROVIDER_ERROR");
@@ -794,3 +973,270 @@ form.addEventListener("submit", async (event) => {
 document.querySelector("#aspect").addEventListener("change", (event) => {
   document.querySelector("#question").value = aspectQuestions[event.target.value] || "请记录需要运营优先核查的评论信号。";
 });
+
+const chatScroll = document.querySelector("#chat-scroll");
+const chatEmpty = document.querySelector("#chat-empty");
+const chatChips = document.querySelector("#chat-chips");
+const chatRunHint = document.querySelector("#chat-run-hint");
+const chatSend = document.querySelector("#chat-send");
+const qaForm = document.querySelector("#qa-form");
+const qaInput = document.querySelector("#qa-input");
+
+const CHAT_SUGGESTIONS = [
+  "对比 GE Profile 和 EUHOMY 的清洁维护问题",
+  "买家对噪音的具体抱怨有哪些?给原话例子",
+  "1星和2星的差评大概占多少?",
+  "这批评论能不能说明噪音是普遍问题?",
+];
+
+function qaMessage(className, value) {
+  if (!chatScroll) return null;
+  chatEmpty.hidden = true;
+  const bubble = textElement("div", `qa-bubble ${className}`, value);
+  chatScroll.append(bubble);
+  chatScroll.scrollTop = chatScroll.scrollHeight;
+  return bubble;
+}
+
+function qaTyping() {
+  const bubble = qaMessage("qa-system", "");
+  if (!bubble) return null;
+  bubble.classList.add("chat-typing");
+  bubble.textContent = "";
+  bubble.append(document.createElement("i"), document.createElement("i"), document.createElement("i"));
+  return bubble;
+}
+
+function formatStepDuration(value) {
+  const ms = Number(value) || 0;
+  if (ms <= 0) return "";
+  return ms >= 1000 ? `${(ms / 1000).toFixed(1)}s` : `${ms}ms`;
+}
+
+function qaTrace(steps) {
+  if (!chatScroll || !steps.length) return;
+  const details = document.createElement("details");
+  details.className = "chat-trace";
+  details.open = true;
+  details.append(textElement("summary", "", `执行过程 · ${steps.length} 步`));
+  const list = document.createElement("ol");
+  list.className = "trace-list";
+  steps.forEach((step) => {
+    const item = document.createElement("li");
+    item.className = step.status === "error" ? "trace-step trace-error" : "trace-step";
+    const head = document.createElement("div");
+    head.className = "trace-head";
+    head.append(
+      textElement("span", "trace-index", String(step.index)),
+      textElement("span", "trace-title", step.title),
+    );
+    const duration = formatStepDuration(step.duration_ms);
+    if (duration) head.append(textElement("span", "trace-time", duration));
+    if (step.status === "error") head.append(textElement("span", "trace-badge", "失败"));
+    item.append(head);
+    if (Array.isArray(step.detail) && step.detail.length) {
+      const detail = document.createElement("ul");
+      detail.className = "trace-detail";
+      step.detail.forEach((line) => detail.append(textElement("li", "", line)));
+      item.append(detail);
+    }
+    list.append(item);
+  });
+  details.append(list);
+  chatScroll.append(details);
+  chatScroll.scrollTop = chatScroll.scrollHeight;
+}
+
+function resetQa() {
+  if (!chatScroll || !chatEmpty) return;
+  chatScroll.replaceChildren(chatEmpty);
+  chatEmpty.hidden = false;
+}
+
+function renderChatChips() {
+  if (!chatChips) return;
+  chatChips.replaceChildren();
+  CHAT_SUGGESTIONS.forEach((text) => {
+    const chip = textElement("button", "", text);
+    chip.type = "button";
+    chip.addEventListener("click", () => {
+      if (!state.runToken) {
+        qaMessage("qa-system", "请先点「开始分析」跑一次,再回到这里提问。");
+        return;
+      }
+      qaMessage("chat-user", text);
+      qaAsk(text);
+    });
+    chatChips.append(chip);
+  });
+}
+renderChatChips();
+
+const chatViolationCopy = {
+  UNKNOWN_CITATION: "回答引用了没有读过的评论编号",
+  QUOTE_NOT_VERBATIM: "引用的原句在评论原文里找不到",
+  UNREFERENCED_ANSWER: "回答没有任何依据(既没引用评论也没用统计)",
+  STATS_MISMATCH: "回答里的统计数字和查询结果不一致",
+  UNKNOWN_STAT_REF: "回答引用了不存在的统计项",
+  ALIAS_IN_TEXT: "回答正文里混入了内部编号",
+  NUMBER_NOT_TRACEABLE:
+    "回答里的数字在当次读到的评论或查询结果里找不到（模型不许自己算合计或占比）;改成直接问某个具体数字更容易通过。",
+  CHAT_SESSION_LIMIT: "这个运行的对话轮次已用完;重新「开始分析」即可开启新对话。",
+  MODEL_OUTPUT_INVALID: "模型这次没有按约定格式返回,这一轮丢弃;再发一次试试。",
+  MODEL_ROUNDS_EXCEEDED: "模型查询次数超出上限,这一轮丢弃;可以重新提问。",
+  API_UNAVAILABLE: "模型暂时不可用,结果未生成;可以稍后重试。",
+  KEY_REJECTED: "DeepSeek 拒绝了这把密钥(无效、过期或没有权限);点右上角「模型设置」换一个再试。",
+  MODEL_RATE_LIMITED: "模型服务现在限流,等几十秒再试。",
+  MODEL_REQUEST_REJECTED: "模型服务不接受这次请求(模型或参数不被接受);点右上角「模型设置」换一个模型再试。",
+};
+
+function describeViolations(reason) {
+  const codes = String(reason)
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
+  const counts = new Map();
+  codes.forEach((code) => counts.set(code, (counts.get(code) || 0) + 1));
+  return [...counts.entries()]
+    .map(([code, count]) => {
+      const label = chatViolationCopy[code] || code;
+      return count > 1 ? `${label} ×${count}` : label;
+    })
+    .join("; ");
+}
+
+function renderChatAnswer(payload) {
+  const box = document.createElement("div");
+  box.className = "insight-result";
+  box.append(
+    textElement(
+      "p",
+      "insight-heading",
+      `智能体回答 · 调用 ${payload.model_calls} 次模型 · 对话第 ${payload.session_turns} 轮`,
+    ),
+  );
+  const line = (value) => textElement("p", "insight-line", value);
+  const section = (title, className, children) => {
+    const wrap = document.createElement("div");
+    wrap.className = `insight-section ${className}`;
+    wrap.append(textElement("strong", "insight-label", title));
+    children.forEach((child) => wrap.append(child));
+    return wrap;
+  };
+  const sections = [section("能说什么", "insight-supported", [line(payload.supported)])];
+  const points = document.createElement("ul");
+  points.className = "insight-list";
+  payload.review_points.forEach((item) => {
+    const li = document.createElement("li");
+    li.textContent = item.text;
+    if (item.citation) {
+      li.append(textElement("span", "qa-cite", `〔${item.citation}:${item.quote}〕`));
+    }
+    points.append(li);
+  });
+  payload.stats_points.forEach((item) => {
+    const li = document.createElement("li");
+    li.textContent = item.text;
+    li.append(
+      textElement(
+        "span",
+        "qa-cite",
+        `〔统计 ${item.stat_key}·${item.product}·${item.metric}=${item.value}〕`,
+      ),
+    );
+    points.append(li);
+  });
+  if (payload.review_points.length || payload.stats_points.length) {
+    sections.push(section("依据(引用已逐字核对,数字均可追溯)", "insight-specifics", [points]));
+  }
+  sections.push(section("不能说什么", "insight-not-supported", [line(payload.not_supported)]));
+  sections.forEach((item) => box.append(item));
+  box.append(
+    textElement(
+      "p",
+      "insight-footnote",
+      "回答里的每条引用都逐字核对到评论原文,正文里的阿拉伯数字逐个对照当次读到的评论和查询结果;核对不过的内容整条丢弃,不会出现在这里。",
+    ),
+  );
+  return box;
+}
+
+async function qaAsk(message) {
+  const headers = insightRequestHeaders();
+  if (chatSend) chatSend.disabled = true;
+  const pending = qaTyping();
+  const scrollToBottom = () => {
+    chatScroll.scrollTop = chatScroll.scrollHeight;
+  };
+  try {
+    const payload = await requestJson("/api/v1/chat", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ run_token: state.runToken, message }),
+    });
+    if (pending) pending.remove();
+    qaTrace(payload.steps || []);
+    if (payload.created_run_token) {
+      try {
+        const runPayload = await requestJson(`/api/v1/runs/${payload.created_run_token}`);
+        renderResult(runPayload, { keepChat: true });
+      } catch (error) {
+        qaMessage("qa-system", `新运行的结果加载失败: ${error.message}`);
+      }
+    }
+    if (payload.status === "READY") {
+      const answer = document.createElement("div");
+      answer.className = "chat-answer";
+      answer.append(renderChatAnswer(payload));
+      chatScroll.append(answer);
+      scrollToBottom();
+      return;
+    }
+    if (payload.reason === "MODEL_NOT_CONFIGURED" && state.insightByo) {
+      const keyPanel = document.createElement("div");
+      keyPanel.className = "insight-key";
+      openInsightKeyPanel(keyPanel, () => qaAsk(message));
+      chatScroll.append(keyPanel);
+      scrollToBottom();
+      return;
+    }
+    qaMessage(
+      "qa-system",
+      payload.status === "VALIDATION_FAILED"
+        ? `回答未通过校验: ${describeViolations(payload.reason)};整条丢弃,可以换个问法重试。`
+        : chatViolationCopy[payload.reason] ||
+          `这一轮没有生成回答(${payload.reason || "UNKNOWN"});可以重试。`,
+    );
+  } catch (error) {
+    if (pending) pending.remove();
+    qaMessage("qa-system", `提问失败: ${error.message}`);
+  } finally {
+    if (chatSend) chatSend.disabled = false;
+  }
+}
+
+if (qaForm) {
+  qaForm.addEventListener("submit", (event) => {
+    event.preventDefault();
+    const message = qaInput.value.trim();
+    if (!message) return;
+    if (!state.runToken) {
+      qaMessage("qa-system", "请先点「开始分析」跑一次,再回到这里提问。");
+      return;
+    }
+    qaInput.value = "";
+    qaInput.style.height = "auto";
+    qaMessage("chat-user", message);
+    qaAsk(message);
+  });
+  qaInput.addEventListener("keydown", (event) => {
+    if (event.key === "Enter" && !event.shiftKey) {
+      event.preventDefault();
+      qaForm.requestSubmit();
+    }
+  });
+  qaInput.addEventListener("input", () => {
+    qaInput.style.height = "auto";
+    qaInput.style.height = `${Math.min(qaInput.scrollHeight, 120)}px`;
+  });
+}

@@ -5,9 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="color-scheme" content="light dark">
     <title>ECom Review Intelligence</title>
-    <script src="/static/workbench-theme.js?v=20261022e"></script>
-    <link rel="stylesheet" href="/static/workbench.css?v=20261022e">
-    <script src="/static/workbench.js?v=20261022e" defer></script>
+    <script src="/static/workbench-theme.js?v=20261026e"></script>
+    <link rel="stylesheet" href="/static/workbench.css?v=20261026e">
+    <script src="/static/workbench.js?v=20261026e" defer></script>
   </head>
   <body>
     <header class="topbar">
@@ -22,11 +22,14 @@
         <div class="mode-chip"><span aria-hidden="true"></span>
           {% if mode == "local" %}本地评论数据{% else %}演示数据{% endif %}
         </div>
+        {% if insight_byo %}
+        <button class="settings-toggle" id="settings-toggle" type="button" aria-haspopup="dialog">模型设置<span class="settings-model-label" id="settings-model-label"></span></button>
+        {% endif %}
         <button class="theme-toggle" id="theme-toggle" type="button">深色</button>
       </div>
     </header>
 
-    <main class="workspace" data-insight-available="{{ 'true' if insight_available else 'false' }}" data-insight-byo="{{ 'true' if insight_byo else 'false' }}">
+    <main class="workspace {% if mode == 'local' %}chat-first{% endif %}" data-insight-available="{{ 'true' if insight_available else 'false' }}" data-insight-byo="{{ 'true' if insight_byo else 'false' }}">
       <nav class="workflow-nav" aria-label="工作流">
         <p class="section-label">工作流</p>
         <button class="workflow-button is-active" type="button" data-workflow="diagnosis">
@@ -49,7 +52,30 @@
         </div>
       </nav>
 
-      <section class="task-column" aria-labelledby="task-title">
+      {% if mode == "local" %}
+      <section class="chat-column" aria-label="智能体问答">
+        <header class="chat-head">
+          <div>
+            <strong>智能体问答</strong>
+            <span id="chat-run-hint">先「开始分析」,再在这里提问</span>
+          </div>
+        </header>
+        <div class="chat-scroll" id="chat-scroll" aria-live="polite">
+          <div class="chat-empty" id="chat-empty">
+            <p>对着当前运行提问,也可以让智能体直接发起一次新分析(换商品、换维度)。回答只来自证据卡样本和白名单统计:每条引用逐字校验,正文里的阿拉伯数字逐个对照当次读到的评论和查询结果,不过就整条丢弃。</p>
+            <div class="chat-chips" id="chat-chips"></div>
+          </div>
+        </div>
+        <form class="chat-composer" id="qa-form">
+          <textarea class="chat-input" id="qa-input" rows="1" maxlength="500"
+                    placeholder="问一个这批评论里的问题…(回车发送,Shift+回车换行)"></textarea>
+          <button class="chat-send" id="chat-send" type="submit" aria-label="发送">↑</button>
+        </form>
+        <p class="chat-foot">智能体有三张牌:读证据卡评论样本、查白名单统计、发起新运行(只能从固定商品目录里选,选完旧对话的引用全部作废)。每轮最多 4 次查询,一个运行最多 8 轮对话。</p>
+      </section>
+      {% endif %}
+
+      <section class="result-column" id="result-panel" aria-live="polite">
         <div class="section-heading">
           <div>
             <p class="section-label">当前任务</p>
@@ -100,9 +126,7 @@
             </button>
           </div>
         </form>
-      </section>
 
-      <section class="result-column" id="result-panel" aria-live="polite">
         <div class="result-header">
           <div>
             <p class="section-label">运行结果</p>
@@ -162,5 +186,36 @@
         <div class="evidence-list" id="evidence-list"></div>
       </section>
     </main>
+
+    {% if insight_byo %}
+    <dialog class="settings-dialog" id="settings-dialog" aria-labelledby="settings-title">
+      <form method="dialog" class="settings-form">
+        <h2 class="settings-title" id="settings-title">模型设置</h2>
+        <p class="settings-status" id="settings-status"></p>
+        <label class="settings-field">
+          <span>DeepSeek API Key</span>
+          <input class="settings-input" id="settings-key" type="password" autocomplete="off" spellcheck="false" placeholder="sk-...">
+        </label>
+        <label class="settings-check">
+          <input id="settings-remember" type="checkbox">
+          <span>在这台电脑上记住(不勾选就只存当前标签页,关闭即忘)</span>
+        </label>
+        <label class="settings-field">
+          <span>模型</span>
+          <select class="settings-input" id="settings-model">
+            {% for option in model_settings.options %}
+            <option value="{{ option.id }}"{% if option.id == model_settings.default %} selected{% endif %}>{{ option.label }}</option>
+            {% endfor %}
+          </select>
+        </label>
+        <div class="settings-actions">
+          <button class="settings-primary" id="settings-save" type="button">保存</button>
+          <button class="settings-secondary" id="settings-clear" type="button">清除密钥</button>
+          <button class="settings-secondary" id="settings-close" type="button">关闭</button>
+        </div>
+        <p class="settings-note" id="settings-note">密钥只存在这个浏览器里,只发往本机服务;不会写进日志或磁盘。换模型后,同一个问题可能得到不同结论。</p>
+      </form>
+    </dialog>
+    {% endif %}
   </body>
 </html>

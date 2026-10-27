@@ -13,6 +13,7 @@ from ecom_review_intelligence.workbench_service import (
 )
 from ecom_review_intelligence.workbench_web import (
     INSIGHT_KEY_HEADER,
+    INSIGHT_MODEL_HEADER,
     InsightRateLimiter,
     create_workbench_app,
 )
@@ -99,10 +100,18 @@ def _client(service, *, rate_limit=(10, 600.0)) -> TestClient:
     return TestClient(create_workbench_app(service, insight_rate_limit=rate_limit))
 
 
-def _post(client: TestClient, *, key: str | None = _VISITOR_KEY, alias: str = "EV-01"):
+def _post(
+    client: TestClient,
+    *,
+    key: str | None = _VISITOR_KEY,
+    alias: str = "EV-01",
+    model: str | None = None,
+):
     headers = {"Content-Type": "application/json"}
     if key is not None:
         headers[INSIGHT_KEY_HEADER] = key
+    if model is not None:
+        headers[INSIGHT_MODEL_HEADER] = model
     return client.post(
         "/api/v1/insights",
         json={"run_token": "token-1", "card_alias": alias},
@@ -113,7 +122,7 @@ def _post(client: TestClient, *, key: str | None = _VISITOR_KEY, alias: str = "E
 def test_visitor_key_builds_one_gateway_and_is_never_echoed(tmp_path: Path) -> None:
     seen: list[str] = []
 
-    def factory(key: str):
+    def factory(key: str, model: str):
         seen.append(key)
         return _StubGateway(key)
 
@@ -136,7 +145,7 @@ def test_visitor_key_builds_one_gateway_and_is_never_echoed(tmp_path: Path) -> N
 def test_cached_result_does_not_build_another_gateway(tmp_path: Path) -> None:
     seen: list[str] = []
 
-    def factory(key: str):
+    def factory(key: str, model: str):
         seen.append(key)
         return _StubGateway(key)
 
@@ -171,7 +180,7 @@ def test_invalid_key_shape_is_rejected_without_echo(tmp_path: Path) -> None:
 def test_repeated_calls_hit_the_rate_limit(tmp_path: Path) -> None:
     seen: list[str] = []
 
-    def factory(key: str):
+    def factory(key: str, model: str):
         seen.append(key)
         return _StubGateway(key)
 
@@ -204,6 +213,62 @@ def test_byo_flag_is_on_for_a_local_service(tmp_path: Path) -> None:
 
     assert 'data-insight-byo="true"' in page
     assert "自己的 DeepSeek API Key" in page
+
+
+def test_model_override_reaches_the_gateway_factory(tmp_path: Path) -> None:
+    seen: list[tuple[str, str]] = []
+
+    def factory(key: str, model: str):
+        seen.append((key, model))
+        return _StubGateway(key)
+
+    client = _client(_service(tmp_path, user_factory=factory))
+
+    response = _post(client, model="deepseek-v4-pro")
+
+    assert response.status_code == 200
+    assert seen == [(_VISITOR_KEY, "deepseek-v4-pro")]
+
+
+def test_default_model_is_used_when_no_header_is_sent(tmp_path: Path) -> None:
+    seen: list[str] = []
+
+    def factory(key: str, model: str):
+        seen.append(model)
+        return _StubGateway(key)
+
+    client = _client(_service(tmp_path, user_factory=factory))
+
+    assert _post(client).status_code == 200
+    assert seen == ["deepseek-v4-flash"]
+
+
+def test_a_model_this_deployment_does_not_offer_is_rejected(tmp_path: Path) -> None:
+    seen: list[str] = []
+
+    def factory(key: str, model: str):
+        seen.append(model)
+        return _StubGateway(key)
+
+    client = _client(_service(tmp_path, user_factory=factory))
+
+    response = _post(client, model="gpt-4o")
+
+    assert response.status_code == 422
+    assert response.json()["error"]["code"] == "INVALID_INPUT"
+    assert "gpt-4o" not in response.text
+    assert seen == []
+
+
+def test_page_offers_the_model_settings_panel(tmp_path: Path) -> None:
+    client = _client(_service(tmp_path))
+
+    page = client.get("/").text
+
+    assert 'id="settings-dialog"' in page
+    assert 'id="settings-model"' in page
+    assert 'value="deepseek-v4-pro"' in page
+    assert "模型设置" in page
 
 
 def test_limiter_is_per_client_and_slides() -> None:

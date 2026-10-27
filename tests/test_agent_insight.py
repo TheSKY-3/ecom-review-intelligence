@@ -217,9 +217,11 @@ class _FakeGateway:
     def __init__(self, draft: InsightDraft) -> None:
         self.draft = draft
         self.calls = 0
+        self.payloads: list[dict] = []
 
     def analyse(self, payload):
         self.calls += 1
+        self.payloads.append(dict(payload))
         return self.draft
 
 
@@ -280,6 +282,61 @@ def test_insight_endpoint_returns_checked_result_and_caches_it(tmp_path):
     serialized = json.dumps(body, ensure_ascii=False)
     assert "LOCAL_PRIVATE_PRODUCT" not in serialized
     assert "evidence_id" not in serialized
+
+
+def test_payload_carries_operator_question_only_when_asked():
+    base = {
+        "aspect_label": "运行噪音",
+        "product_label": "商品 A",
+        "matched_count": 1,
+        "reviews": [("E1", "text")],
+    }
+
+    plain = build_payload(**base)
+    asked = build_payload(**base, question="  晚上噪音到底有多大?  ")
+    long = build_payload(**base, question="问" * 300)
+
+    assert "operator_question" not in plain
+    assert asked["operator_question"] == "晚上噪音到底有多大?"
+    assert len(long["operator_question"]) == 200
+
+
+def test_insight_question_reaches_the_model_and_caches_per_question(tmp_path):
+    service, gateway = _service(tmp_path, _draft())
+    client = TestClient(create_workbench_app(service=service))
+    run_token, card_alias = _create_run(client)
+
+    def ask(question):
+        body = {"run_token": run_token, "card_alias": card_alias}
+        if question is not None:
+            body["question"] = question
+        return client.post("/api/v1/insights", json=body)
+
+    first = ask("夜间噪音有多大?")
+    again = ask("夜间噪音有多大?")
+    other = ask("买家提到安装了吗?")
+    no_question = ask(None)
+
+    assert first.status_code == 200 and first.json()["status"] == "READY"
+    assert again.json() == first.json()
+    assert other.status_code == 200 and no_question.status_code == 200
+    assert gateway.calls == 3
+    assert [payload.get("operator_question") for payload in gateway.payloads] == [
+        "夜间噪音有多大?",
+        "买家提到安装了吗?",
+        None,
+    ]
+
+
+def test_insight_question_contract_rejects_overlong_question():
+    client = TestClient(create_workbench_app())
+
+    response = client.post(
+        "/api/v1/insights",
+        json={"run_token": "token", "card_alias": "EV-01", "question": "问" * 301},
+    )
+
+    assert response.status_code == 422
 
 
 def test_failed_quote_check_discards_the_whole_result(tmp_path):

@@ -126,6 +126,57 @@ class EvidenceDetail(_PublicModel):
 class InsightRequest(_PublicModel):
     run_token: str = Field(min_length=1, max_length=64)
     card_alias: str = Field(min_length=1, max_length=16)
+    question: str | None = Field(default=None, max_length=300)
+
+
+class ChatRequest(_PublicModel):
+    """One operator message in the constrained chat assistant."""
+
+    run_token: str = Field(min_length=1, max_length=64)
+    message: str = Field(min_length=1, max_length=500)
+
+
+class ChatPointView(_PublicModel):
+    text: str
+    citation: str | None = None
+    quote: str | None = None
+
+
+class ChatStatsPointView(_PublicModel):
+    text: str
+    stat_key: str
+    product: str
+    metric: str
+    value: int
+
+
+class ChatStepView(_PublicModel):
+    """One executed chat step: what ran, what it touched, how long it took."""
+
+    index: int = Field(ge=1)
+    round: int = Field(ge=1)
+    tool: str = Field(min_length=1, max_length=32)
+    title: str = Field(min_length=1, max_length=120)
+    detail: tuple[str, ...] = Field(default=(), max_length=4)
+    status: Literal["ok", "error"] = "ok"
+    duration_ms: int = Field(default=0, ge=0)
+
+
+class ChatTurnView(_PublicModel):
+    """Public result of one chat turn; failed turns carry no answer fields."""
+
+    schema_version: Literal["p7-chat-turn-v2"] = "p7-chat-turn-v2"
+    run_token: str
+    status: Literal["READY", "UNAVAILABLE", "VALIDATION_FAILED"]
+    reason: str | None = None
+    supported: str = ""
+    review_points: tuple[ChatPointView, ...] = ()
+    stats_points: tuple[ChatStatsPointView, ...] = ()
+    not_supported: str = ""
+    steps: tuple[ChatStepView, ...] = ()
+    model_calls: int = Field(default=0, ge=0)
+    session_turns: int = Field(default=0, ge=0)
+    created_run_token: str | None = None
 
 
 Verdict = Literal["confirmed", "doubtful", "rejected"]

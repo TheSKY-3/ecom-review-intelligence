@@ -16,8 +16,10 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-from ecom_review_intelligence.model_gateway import normalize_request_key
+from ecom_review_intelligence.model_gateway import normalize_request_key, normalize_request_model
 from ecom_review_intelligence.workbench_contracts import (
+    ChatRequest,
+    ChatTurnView,
     EvidenceDetail,
     InsightRequest,
     InsightView,
@@ -30,6 +32,7 @@ from ecom_review_intelligence.workbench_contracts import (
 )
 from ecom_review_intelligence.workbench_service import (
     SyntheticWorkbenchService,
+    WorkbenchChatUnavailable,
     WorkbenchEvidenceUnavailable,
     WorkbenchInputError,
     WorkbenchInsightUnavailable,
@@ -44,6 +47,21 @@ def _error(status_code: int, code: str, message: str) -> JSONResponse:
 
 
 INSIGHT_KEY_HEADER = "x-insight-key"
+INSIGHT_MODEL_HEADER = "x-insight-model"
+
+
+def _request_model(http_request: Request, backend: WorkbenchService) -> str | None:
+    """Accept only a model id this deployment advertises."""
+
+    settings = backend.model_settings() if hasattr(backend, "model_settings") else {}
+    options = [item["id"] for item in settings.get("options", ())]
+    try:
+        return normalize_request_model(
+            http_request.headers.get(INSIGHT_MODEL_HEADER),
+            options=options or None,
+        )
+    except ValueError as error:
+        raise WorkbenchInputError("The supplied model is not offered.") from error
 
 
 class InsightRateLimiter:
@@ -240,6 +258,17 @@ def create_workbench_app(
             "The optional AI reading step is unavailable for this run.",
         )
 
+    @app.exception_handler(WorkbenchChatUnavailable)
+    async def chat_unavailable(
+        request: Request, error: WorkbenchChatUnavailable
+    ) -> JSONResponse:
+        del request, error
+        return _error(
+            404,
+            "CHAT_UNAVAILABLE",
+            "The chat assistant is unavailable for this run or deployment.",
+        )
+
     @app.exception_handler(Exception)
     async def unknown_error(request: Request, error: Exception) -> JSONResponse:
         del request, error
@@ -267,6 +296,11 @@ def create_workbench_app(
             if hasattr(backend, "insight_byo_available")
             else False
         )
+        model_settings = (
+            backend.model_settings()
+            if hasattr(backend, "model_settings")
+            else {"default": "", "options": []}
+        )
         return templates.TemplateResponse(
             request=request,
             name="workbench.html",
@@ -275,6 +309,7 @@ def create_workbench_app(
                 "products": product_options,
                 "insight_available": insight_available,
                 "insight_byo": insight_byo,
+                "model_settings": model_settings,
             },
         )
 
@@ -318,6 +353,7 @@ def create_workbench_app(
             user_key = normalize_request_key(http_request.headers.get(INSIGHT_KEY_HEADER))
         except ValueError as error:
             raise WorkbenchInputError("The supplied API key is not usable.") from error
+        model = _request_model(http_request, backend)
         if not server_key and user_key is None and not byo:
             raise WorkbenchInsightUnavailable()
         client = http_request.client.host if http_request.client else "unknown"
@@ -332,7 +368,41 @@ def create_workbench_app(
                 },
             )
         view = backend.run_insight(
-            request.run_token, request.card_alias, user_key=user_key
+            request.run_token,
+            request.card_alias,
+            user_key=user_key,
+            question=request.question,
+            model=model,
+        )
+        assert_public_workbench_safe(view.model_dump(mode="json"))
+        return view
+
+    @app.post("/api/v1/chat", response_model=ChatTurnView)
+    def create_chat_turn(request: ChatRequest, http_request: Request) -> ChatTurnView:
+        if not hasattr(backend, "send_chat"):
+            raise WorkbenchChatUnavailable()
+        try:
+            user_key = normalize_request_key(http_request.headers.get(INSIGHT_KEY_HEADER))
+        except ValueError as error:
+            raise WorkbenchInputError("The supplied API key is not usable.") from error
+        model = _request_model(http_request, backend)
+        server_key = bool(getattr(backend, "insight_available", lambda: False)())
+        byo = bool(getattr(backend, "insight_byo_available", lambda: False)())
+        if not server_key and user_key is None and not byo:
+            raise WorkbenchChatUnavailable()
+        client = http_request.client.host if http_request.client else "unknown"
+        if not limiter.allow(client):
+            return JSONResponse(
+                status_code=429,
+                content={
+                    "error": {
+                        "code": "RATE_LIMITED",
+                        "message": "Too many analysis requests; try again later.",
+                    }
+                },
+            )
+        view = backend.send_chat(
+            request.run_token, request.message, user_key=user_key, model=model
         )
         assert_public_workbench_safe(view.model_dump(mode="json"))
         return view

@@ -8,7 +8,7 @@
 受约束 Agent + 本地证据引擎 + 逐字段校验：模型只拿运行期别名与聚合证据卡，不读原始评论、不能任意查询，写不出卡片里没有的事实。
 
 ![gate](https://img.shields.io/badge/%E5%B7%A5%E7%A8%8B%E9%97%A8-P0%E2%80%93P6%20PASSED-2F6B4F)
-![tests](https://img.shields.io/badge/tests-398%20passed-2F6B4F)
+![tests](https://img.shields.io/badge/tests-495%20passed-2F6B4F)
 ![desktop](https://img.shields.io/badge/Windows-exe%2042%20MB-3E6B96)
 ![python](https://img.shields.io/badge/Python-3.12-3E6B96)
 ![license](https://img.shields.io/badge/license-MIT-3E6B96)
@@ -28,6 +28,14 @@
 ![visitor key panel](docs/assets/p7-workbench-ai-key.png)
 
 三张图都由 `scripts/capture_workbench_screenshots.cjs` 用真实 Chrome 截取；脚本保存前会拒绝含路径、商品编号或哈希形状的页面文本。
+
+## 对话式助手（受约束，opt-in）
+
+顶栏「模型设置」里填自己的 DeepSeek key，才启用两条模型步骤（单卡 AI 深入分析、对话助手）。key 只存在当前浏览器，随该次请求的 `X-Insight-Key` 头传给服务端，不落盘、不写日志；`X-Insight-Model` 只能从服务端白名单里选（当前 `deepseek-v4-flash` / `deepseek-v4-pro`），未知模型在调用供应商之前就被拒（422）。
+
+对话入口是 `POST /api/v1/chat`，护栏和单卡分析同一套：模型只组织语言，引用、引文、数字、结构四道校验照跑，不通过就走确定性降级。界面上每一步（检索证据 / 取卡 / 校验 / 降级）单独列耗时，不给"总耗时"这种事后算不清的数字。
+
+没有 key 时自动回到本地确定性模式，不联网。Windows 上双击仓库根目录的 `启动工作台.bat`，会在独立控制台窗口里起同一个本地服务（端口 8765）。
 
 ## 为什么可信
 

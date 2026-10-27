@@ -7,7 +7,7 @@ import json
 import os
 import re
 from collections import deque
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 from time import perf_counter
@@ -15,14 +15,29 @@ from typing import Any, Protocol
 
 from pydantic import ValidationError
 
+from ecom_review_intelligence.agent_chat import (
+    CHAT_SYSTEM_PROMPT,
+    MAX_TOOL_ROUNDS,
+    ChatAnswerDraft,
+    CreateRunArgs,
+    QueryStatsArgs,
+    ReadCardArgs,
+)
 from ecom_review_intelligence.agent_contracts import AgentDraft, AgentPlan, SafeEvidenceCard
 from ecom_review_intelligence.agent_insight import INSIGHT_SYSTEM_PROMPT, InsightDraft
 
 
 class GatewayError(RuntimeError):
-    def __init__(self, error_code: str, safe_message: str) -> None:
+    def __init__(
+        self,
+        error_code: str,
+        safe_message: str,
+        *,
+        steps: Sequence[ChatToolStep] = (),
+    ) -> None:
         super().__init__(safe_message)
         self.error_code = error_code
+        self.steps = tuple(steps)
 
 
 @dataclass
@@ -539,7 +554,9 @@ class DeepSeekInsightGateway:
                 tool_choice={"type": "function", "function": {"name": "submit_insight"}},
             )
         except Exception as error:
-            raise GatewayError("API_UNAVAILABLE", "The model provider request failed.") from error
+            raise GatewayError(
+                _provider_failure_code(error), "The model provider request failed."
+            ) from error
         try:
             tool_calls = response.choices[0].message.tool_calls
             if len(tool_calls or ()) != 1:
@@ -587,12 +604,72 @@ def normalize_request_key(value: str | None) -> str | None:
     return key
 
 
+MODEL_OPTIONS: tuple[tuple[str, str], ...] = (
+    # The provider lists deepseek-flash and deepseek-v4-pro; deepseek-v4-flash
+    # is the alias this deployment was configured and evaluated with.
+    ("deepseek-v4-flash", "DeepSeek V4 Flash"),
+    ("deepseek-v4-pro", "DeepSeek V4 Pro"),
+)
+
+_MODEL_SHAPE = re.compile(r"[A-Za-z0-9._\-]{3,80}")
+
+
+def model_options(config: Mapping[str, Any]) -> tuple[tuple[str, str], ...]:
+    """The model ids this deployment offers, the configured one always included."""
+
+    current = str(config.get("model") or "").strip()
+    options = list(MODEL_OPTIONS)
+    if current and all(current != model_id for model_id, _label in options):
+        options.insert(0, (current, current))
+    return tuple(options)
+
+
+def default_model(config: Mapping[str, Any]) -> str:
+    return str(config.get("model") or "").strip() or MODEL_OPTIONS[0][0]
+
+
+def normalize_request_model(
+    value: str | None, *, options: Iterable[str] | None = None
+) -> str | None:
+    """Accept a model id only when this deployment offers it.
+
+    The id is not a secret, but the same fixed-message rule applies: an invalid
+    value raises without echoing what the visitor sent.
+    """
+
+    if value is None:
+        return None
+    model = value.strip()
+    if not model:
+        return None
+    if not _MODEL_SHAPE.fullmatch(model):
+        raise ValueError("User-supplied model has an invalid shape.")
+    allowed = set(options) if options is not None else {item[0] for item in MODEL_OPTIONS}
+    if model not in allowed:
+        raise ValueError("The requested model is not offered by this deployment.")
+    return model
+
+
+def _provider_failure_code(error: Exception) -> str:
+    """Tell a rejected key apart from a transient provider failure."""
+
+    status = getattr(error, "status_code", None)
+    if status in (401, 403):
+        return "KEY_REJECTED"
+    if status == 400:
+        return "MODEL_REQUEST_REJECTED"
+    if status == 429:
+        return "MODEL_RATE_LIMITED"
+    return "API_UNAVAILABLE"
+
+
 def build_insight_gateway(
     config: Mapping[str, Any],
     *,
     client_factory: Callable[..., Any] | None = None,
     environment: Mapping[str, str] | None = None,
     api_key: str | None = None,
+    model: str | None = None,
 ) -> DeepSeekInsightGateway | None:
     """Return a gateway only when a key is available; otherwise the step is off.
 
@@ -609,7 +686,242 @@ def build_insight_gateway(
     client = factory(api_key=key, base_url=str(config["base_url"]), max_retries=0)
     return DeepSeekInsightGateway(
         client=client,
-        model=str(config["model"]),
+        model=(model or "").strip() or str(config["model"]),
         max_output_tokens=900,
+        request_timeout_seconds=int(config.get("request_timeout_seconds", 30)),
+    )
+
+
+@dataclass(frozen=True)
+class ChatToolStep:
+    """One executed step: the tool, its short title, details, and duration."""
+
+    round: int
+    tool: str
+    title: str
+    detail: tuple[str, ...]
+    status: str
+    duration_ms: int
+
+
+@dataclass
+class ChatTurnOutcome:
+    draft: ChatAnswerDraft
+    steps: tuple[ChatToolStep, ...]
+    model_calls: int
+
+
+class ChatGateway(Protocol):
+    def run_turn(
+        self,
+        messages: Sequence[Mapping[str, str]],
+        tool_executor: Callable[
+            [str, str], tuple[dict[str, Any], str, Sequence[str], str]
+        ],
+    ) -> ChatTurnOutcome: ...
+
+
+class DeepSeekChatGateway:
+    """Bounded read-only tool loop for the operator chat assistant.
+
+    One turn may run at most ``max_tool_rounds`` data tools and must end in one
+    submit_chat_answer call; no tool call, an unknown tool, or an over-budget
+    loop fails closed for the whole turn.
+    """
+
+    def __init__(
+        self,
+        *,
+        client: Any,
+        model: str,
+        max_output_tokens: int = 1200,
+        request_timeout_seconds: int = 30,
+        max_tool_rounds: int = MAX_TOOL_ROUNDS,
+    ) -> None:
+        if getattr(client, "max_retries", 0) != 0:
+            raise ValueError("DeepSeek client automatic retries must be disabled.")
+        self.client = client
+        self.model = model
+        self.max_output_tokens = max_output_tokens
+        self.request_timeout_seconds = request_timeout_seconds
+        self.max_tool_rounds = max_tool_rounds
+
+    def run_turn(
+        self,
+        messages: Sequence[Mapping[str, str]],
+        tool_executor: Callable[[str, str], tuple[dict[str, Any], str]],
+    ) -> ChatTurnOutcome:
+        working: list[dict[str, Any]] = [{"role": "system", "content": CHAT_SYSTEM_PROMPT}]
+        working.extend(dict(item) for item in messages)
+        tools = [
+            {
+                "type": "function",
+                "function": {
+                    "name": "read_card_reviews",
+                    "description": (
+                        "Read the fixed sample of at most 5 review texts of one "
+                        "evidence card in this run."
+                    ),
+                    "parameters": ReadCardArgs.model_json_schema(),
+                },
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "query_run_stats",
+                    "description": (
+                        "Query one predefined aggregate statistic over this run's "
+                        "matched reviews."
+                    ),
+                    "parameters": QueryStatsArgs.model_json_schema(),
+                },
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "create_run",
+                    "description": (
+                        "Start a new analysis run over the catalog products listed "
+                        "in the context. Use it whenever the operator's question is "
+                        "about products or an aspect the current run does not cover; "
+                        "the new run then replaces the current one as the only scope."
+                    ),
+                    "parameters": CreateRunArgs.model_json_schema(),
+                },
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "submit_chat_answer",
+                    "description": "Submit the final constrained answer; execute nothing.",
+                    "parameters": ChatAnswerDraft.model_json_schema(),
+                },
+            },
+        ]
+        steps: list[ChatToolStep] = []
+        for calls in range(1, self.max_tool_rounds + 2):
+            try:
+                response = self.client.chat.completions.create(
+                    model=self.model,
+                    stream=False,
+                    temperature=0,
+                    max_tokens=self.max_output_tokens,
+                    timeout=self.request_timeout_seconds,
+                    extra_body={"thinking": {"type": "disabled"}},
+                    messages=working,
+                    tools=tools,
+                    tool_choice="auto",
+                )
+            except Exception as error:
+                raise GatewayError(
+                    _provider_failure_code(error),
+                    "The model provider request failed.",
+                    steps=tuple(steps),
+                ) from error
+            try:
+                message = response.choices[0].message
+                tool_calls = list(message.tool_calls or ())
+                if not tool_calls:
+                    raise ValueError("a tool call is required")
+                working.append(
+                    {
+                        "role": "assistant",
+                        "content": message.content,
+                        "tool_calls": [
+                            {
+                                "id": call.id,
+                                "type": "function",
+                                "function": {
+                                    "name": call.function.name,
+                                    "arguments": call.function.arguments,
+                                },
+                            }
+                            for call in tool_calls
+                        ],
+                    }
+                )
+                for call in tool_calls:
+                    if call.function.name == "submit_chat_answer":
+                        draft = ChatAnswerDraft.model_validate(
+                            json.loads(call.function.arguments)
+                        )
+                        steps.append(
+                            ChatToolStep(
+                                round=calls,
+                                tool="submit_chat_answer",
+                                title="提交回答",
+                                detail=(
+                                    f"引用 {len(draft.review_points)} 条评论",
+                                    f"统计 {len(draft.stats_points)} 项",
+                                ),
+                                status="ok",
+                                duration_ms=0,
+                            )
+                        )
+                        return ChatTurnOutcome(draft, tuple(steps), calls)
+                    started = perf_counter()
+                    result, title, detail, status = tool_executor(
+                        call.function.name, call.function.arguments
+                    )
+                    steps.append(
+                        ChatToolStep(
+                            round=calls,
+                            tool=call.function.name,
+                            title=title,
+                            detail=tuple(detail),
+                            status=status,
+                            duration_ms=max(1, int((perf_counter() - started) * 1000)),
+                        )
+                    )
+                    working.append(
+                        {
+                            "role": "tool",
+                            "tool_call_id": call.id,
+                            "content": json.dumps(
+                                result, ensure_ascii=False, sort_keys=True
+                            ),
+                        }
+                    )
+            except (
+                AttributeError,
+                IndexError,
+                TypeError,
+                ValueError,
+                KeyError,
+                json.JSONDecodeError,
+                ValidationError,
+            ) as error:
+                raise GatewayError(
+                    "MODEL_OUTPUT_INVALID",
+                    "Chat model output is invalid.",
+                    steps=tuple(steps),
+                ) from error
+        raise GatewayError(
+            "MODEL_ROUNDS_EXCEEDED",
+            "The chat tool loop exceeded its round budget.",
+            steps=tuple(steps),
+        )
+
+
+def build_chat_gateway(
+    config: Mapping[str, Any],
+    *,
+    client_factory: Callable[..., Any] | None = None,
+    environment: Mapping[str, str] | None = None,
+    api_key: str | None = None,
+    model: str | None = None,
+) -> DeepSeekChatGateway | None:
+    """Mirror of build_insight_gateway for the operator chat assistant."""
+
+    env = os.environ if environment is None else environment
+    key = (api_key or "").strip() or (env.get("DEEPSEEK_API_KEY") or "").strip()
+    if not key:
+        return None
+    factory = client_factory or _openai_client
+    client = factory(api_key=key, base_url=str(config["base_url"]), max_retries=0)
+    return DeepSeekChatGateway(
+        client=client,
+        model=(model or "").strip() or str(config["model"]),
+        max_output_tokens=1200,
         request_timeout_seconds=int(config.get("request_timeout_seconds", 30)),
     )

@@ -67,6 +67,7 @@ button:focus-visible, select:focus-visible, textarea:focus-visible, input:focus-
 
 @media (prefers-reduced-motion: reduce) {
   .signal-bar, .product-signal-segment, .coverage-track i { transition: none; }
+  .chat-typing i { animation: none; }
 }
 
 .topbar {
@@ -108,9 +109,11 @@ button:focus-visible, select:focus-visible, textarea:focus-visible, input:focus-
   background: var(--surface);
 }
 
-.workflow-nav, .task-column, .result-column { min-width: 0; }
+/* 聊天优先布局:中间一列固定给智能体问答,右侧合并任务表单和结果 */
+.workspace.chat-first { grid-template-columns: 220px minmax(400px, 0.95fr) minmax(440px, 1.05fr); }
+
+.workflow-nav, .result-column { min-width: 0; }
 .workflow-nav { padding: 28px 16px; background: var(--nav-bg); border-right: 1px solid var(--line); }
-.task-column { padding: 28px; border-right: 1px solid var(--line); }
 .result-column { padding: 28px; background: var(--surface-soft); }
 
 .section-label { margin: 0 0 10px; color: var(--muted); font-size: 11px; font-weight: 800; text-transform: uppercase; }
@@ -170,6 +173,7 @@ textarea { resize: vertical; min-height: 84px; line-height: 1.5; cursor: text; }
 .primary-action:disabled { opacity: .55; cursor: wait; }
 
 /* 结果区:状态 → 指令条(下一步,本页唯一的大动作提示) → 概述 → 指标 */
+.result-header { margin-top: 32px; padding-top: 20px; border-top: 1px solid var(--line); }
 .status-badge { padding: 6px 8px; font: 700 10px Consolas, monospace; white-space: nowrap; }
 .status-stack { display: grid; justify-items: end; gap: 5px; }
 .status-hint { color: var(--muted); font-size: 11px; text-align: right; }
@@ -328,6 +332,114 @@ kbd {
 .insight-key-submit { margin-top: 8px; padding: 6px 12px; font: 700 11px inherit; border: 1px solid var(--ink); border-radius: 3px; background: var(--ink); color: var(--surface); cursor: pointer; }
 .insight-key-note { margin: 8px 0 0; font: 10px/1.6 inherit; color: var(--muted); }
 
+/* 顶栏模型设置:密钥与模型都只留在浏览器里,服务端只按请求使用 */
+.settings-toggle {
+  border: 1px solid var(--topbar-line); background: transparent; color: inherit;
+  font-size: 11px; padding: 5px 10px; cursor: pointer;
+}
+.settings-toggle:hover { border-color: var(--green); }
+.settings-model-label { margin-left: 6px; color: var(--topbar-muted); font-size: 10px; }
+
+.settings-dialog {
+  width: min(460px, calc(100vw - 32px));
+  padding: 22px 24px;
+  border: 1px solid var(--line); border-radius: 6px;
+  background: var(--surface); color: var(--ink);
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.25);
+}
+.settings-dialog::backdrop { background: rgba(9, 20, 16, 0.45); }
+.settings-title { margin: 0 0 6px; font-size: 17px; }
+.settings-status { margin: 0 0 12px; font: 11px/1.5 Consolas, monospace; color: var(--muted); }
+.settings-field { display: block; margin-top: 12px; }
+.settings-field > span { display: block; margin-bottom: 6px; font-size: 12px; font-weight: 700; }
+.settings-input {
+  width: 100%; box-sizing: border-box; padding: 8px 10px;
+  border: 1px solid var(--line); border-radius: 3px;
+  background: var(--surface-soft); color: var(--ink); font: 12px Consolas, monospace;
+}
+.settings-check { display: flex; gap: 8px; align-items: flex-start; margin-top: 10px; font-size: 11px; line-height: 1.5; color: var(--muted); }
+.settings-check input { margin-top: 2px; }
+.settings-actions { display: flex; gap: 8px; margin-top: 18px; }
+.settings-primary, .settings-secondary { padding: 7px 14px; font: 700 11px inherit; border-radius: 3px; cursor: pointer; }
+.settings-primary { border: 1px solid var(--ink); background: var(--ink); color: var(--surface); }
+.settings-secondary { border: 1px solid var(--line); background: transparent; color: var(--ink); }
+.settings-secondary:hover { border-color: var(--green); color: var(--green-deep); }
+.settings-note { margin: 14px 0 0; font: 10px/1.6 inherit; color: var(--muted); }
+
+/* 智能体问答列:聊天优先,整列吸附在视口内、独立滚动、底部固定输入(参考 Copilot Chat / Notion AI 模式) */
+.chat-column {
+  position: sticky; top: 0; height: calc(100vh - 72px);
+  display: flex; flex-direction: column; min-width: 0;
+  border-right: 1px solid var(--line); background: var(--surface);
+}
+
+.chat-head {
+  display: flex; justify-content: space-between; align-items: center; gap: 12px;
+  padding: 16px 18px 14px; border-bottom: 1px solid var(--line); background: var(--surface-soft);
+}
+.chat-head strong { font-size: 15px; display: block; }
+.chat-head span { color: var(--muted); font-size: 11px; }
+
+.chat-scroll { flex: 1; overflow-y: auto; padding: 16px 18px; display: flex; flex-direction: column; gap: 10px; align-content: start; }
+.chat-empty {
+  color: var(--muted); font-size: 12px; line-height: 1.65;
+  border: 1px dashed var(--line); background: var(--surface-soft); padding: 14px;
+}
+.chat-chips { display: flex; flex-direction: column; gap: 6px; margin-top: 12px; }
+.chat-chips button {
+  text-align: left; padding: 9px 11px; border: 1px solid var(--line);
+  background: var(--surface); color: var(--ink); font-size: 12px; line-height: 1.5;
+}
+.chat-chips button:hover { border-color: var(--green); color: var(--green-deep); }
+
+.chat-composer {
+  display: flex; gap: 8px; align-items: flex-end;
+  padding: 12px 18px; border-top: 1px solid var(--line); background: var(--surface-soft);
+}
+.chat-input {
+  flex: 1; resize: none; max-height: 120px; cursor: text;
+  border: 1px solid var(--line); background: var(--surface); color: var(--ink);
+  padding: 9px 11px; border-radius: 4px; font-size: 13px; line-height: 1.5;
+}
+.chat-send {
+  flex: 0 0 auto; width: 38px; height: 38px; border: 0; border-radius: 6px;
+  background: var(--green); color: #fff; font-size: 16px; font-weight: 700;
+}
+.chat-send:hover { background: var(--green-deep); }
+.chat-send:disabled { opacity: .55; cursor: wait; }
+.chat-foot {
+  margin: 0; padding: 8px 18px 12px; border-top: 1px solid var(--line);
+  color: var(--muted); font-size: 10px; line-height: 1.55; background: var(--surface-soft);
+}
+
+.qa-bubble { padding: 8px 10px; font-size: 12px; line-height: 1.6; border: 1px solid var(--line); background: var(--surface); overflow-wrap: anywhere; }
+.qa-bubble.chat-user { align-self: flex-end; max-width: 85%; border-left: 0; border-right: 3px solid var(--green); background: var(--green-soft); }
+.qa-bubble.qa-system { color: var(--muted); font-size: 11px; background: transparent; border-style: dashed; }
+.chat-trace { color: var(--muted); font-size: 11px; border: 1px dotted var(--line); background: transparent; padding: 6px 10px; }
+.chat-trace summary { cursor: pointer; color: var(--blue); }
+.chat-trace .trace-list { list-style: none; margin: 6px 0 2px; padding: 0; }
+.trace-step { margin: 4px 0; padding: 3px 0 3px 8px; border-left: 2px solid var(--line); }
+.trace-step.trace-error { border-left-color: var(--red, #b3261e); }
+.trace-head { display: flex; align-items: baseline; gap: 6px; }
+.trace-index {
+  flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center;
+  width: 15px; height: 15px; border-radius: 50%; font-size: 9px; line-height: 1;
+  background: var(--surface-soft); border: 1px solid var(--line); color: var(--muted);
+}
+.trace-title { color: var(--ink); font-weight: 600; }
+.trace-time { margin-left: auto; color: var(--muted); font-variant-numeric: tabular-nums; }
+.trace-badge { color: #b3261e; }
+.trace-detail { list-style: none; margin: 3px 0 0 21px; padding: 0; color: var(--muted); }
+.trace-detail li { margin: 1px 0; line-height: 1.5; }
+.chat-answer { border: 1px solid var(--line); border-left: 3px solid var(--blue); background: var(--surface-soft); padding: 10px 12px; }
+.chat-typing { display: inline-flex; gap: 4px; align-items: center; padding: 10px 12px; }
+.chat-typing i { width: 6px; height: 6px; border-radius: 50%; background: var(--muted); animation: chatblink 1.2s infinite; }
+.chat-typing i:nth-child(2) { animation-delay: .2s; }
+.chat-typing i:nth-child(3) { animation-delay: .4s; }
+@keyframes chatblink { 0%, 80%, 100% { opacity: .25; } 40% { opacity: 1; } }
+.qa-cite { display: block; color: var(--muted); font-size: 11px; margin-top: 2px; overflow-wrap: anywhere; }
+.qa-log .insight-key { margin-top: 0; }
+
 .clarification-choices { display: grid; gap: 8px; }
 .clarification-choices button {
   padding: 11px; border: 1px solid var(--green); background: var(--surface); color: var(--green); text-align: left;
@@ -335,7 +447,8 @@ kbd {
 .clarification-choices button:hover { background: var(--green-soft); }
 
 @media (max-width: 1040px) {
-  .workspace { grid-template-columns: 180px minmax(360px, 1fr); }
+  .workspace, .workspace.chat-first { grid-template-columns: 180px minmax(360px, 1fr); }
+  .chat-column { grid-column: 1 / -1; position: static; height: 72vh; border-top: 1px solid var(--line); }
   .result-column { grid-column: 1 / -1; border-top: 1px solid var(--line); }
 }
 
@@ -347,6 +460,7 @@ kbd {
   .workflow-nav { padding: 16px; border-right: 0; border-bottom: 1px solid var(--line); }
   .workflow-nav > .section-label, .boundary-note { display: none; }
   .workflow-nav { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+  .chat-column { height: 60vh; border-top: 1px solid var(--line); }
   .workflow-button { min-height: 52px; padding: 7px; border: 1px solid var(--nav-border); grid-template-columns: 1fr; }
   .workflow-button:last-of-type { border-bottom: 1px solid var(--nav-border); }
   .workflow-index, .workflow-button small { display: none; }

@@ -216,6 +216,12 @@ kbd {
 .signal-visual span { color: var(--muted); font-size: 11px; white-space: nowrap; font-variant-numeric: tabular-nums; }
 .signal-bar { display: block; height: 7px; width: 0; transition: width .25s ease; }
 .signal-caveat { margin: 6px 0 0; padding-bottom: 12px; border-bottom: 1px solid var(--line); color: var(--muted); font-size: 11px; line-height: 1.6; }
+.lexicon-block { border-top: 1px dashed var(--line); margin-top: 6px; }
+.lexicon-strip { grid-template-columns: repeat(4, minmax(0, 1fr)); margin-top: 10px; }
+.lexicon-strip div { min-height: 52px; padding: 8px 10px; }
+.lexicon-strip strong { font-size: 14px; }
+.lexicon-note { margin: 8px 0 0; color: var(--muted); font-size: 11px; line-height: 1.6; }
+@media (max-width: 720px) { .lexicon-strip { grid-template-columns: repeat(2, 1fr); } }
 .blind-spot-note { color: var(--amber); }
 .supporting { background: var(--green); }
 .opposing { background: var(--stamp); }

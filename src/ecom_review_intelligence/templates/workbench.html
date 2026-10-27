@@ -5,9 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="color-scheme" content="light dark">
     <title>ECom Review Intelligence</title>
-    <script src="/static/workbench-theme.js?v=20261026e"></script>
-    <link rel="stylesheet" href="/static/workbench.css?v=20261026e">
-    <script src="/static/workbench.js?v=20261026e" defer></script>
+    <script src="/static/workbench-theme.js?v=20261026f"></script>
+    <link rel="stylesheet" href="/static/workbench.css?v=20261026f">
+    <script src="/static/workbench.js?v=20261026f" defer></script>
   </head>
   <body>
     <header class="topbar">
@@ -157,7 +157,7 @@
         </div>
 
         <section class="visual-block">
-          <div class="visual-heading"><strong>当前核查样本的信号分布</strong><span>词表匹配信号</span></div>
+          <div class="visual-heading"><strong>当前核查样本的信号分布</strong><span id="signal-scope-label">仅核查样本</span></div>
           <div class="signal-visual" aria-label="证据信号概览">
           <div><span id="label-supporting">支持 · 0</span><i class="signal-bar supporting" id="bar-supporting"></i></div>
           <div><span id="label-opposing">反对 · 0</span><i class="signal-bar opposing" id="bar-opposing"></i></div>
@@ -173,6 +173,16 @@
         <section class="visual-block">
           <div class="visual-heading"><strong>按商品查看</strong><span>各商品独立统计</span></div>
           <div class="product-signal-list" id="product-signal-visual"></div>
+        </section>
+        <section class="visual-block lexicon-block" id="lexicon-block" hidden>
+          <div class="visual-heading"><strong>全量词表粗筛</strong><span>全部匹配评论 · 未逐条核对</span></div>
+          <div class="metric-strip lexicon-strip">
+            <div><span>支持</span><strong id="lexicon-supporting">0</strong></div>
+            <div><span>反对</span><strong id="lexicon-opposing">0</strong></div>
+            <div><span>冲突</span><strong id="lexicon-conflicting">0</strong></div>
+            <div><span>判不出</span><strong id="lexicon-insufficient">0</strong></div>
+          </div>
+          <p class="lexicon-note" id="lexicon-note"></p>
         </section>
         <p class="signal-caveat">机器判定提示:方向按词表匹配,可能误判(例如 “Not easy to clean” 因含 easy 被计为支持);下结论前请逐条核对证据原文。</p>
         {% if mode == "local" %}

@@ -75,6 +75,7 @@ def test_create_and_fetch_diagnosis_run_uses_closed_public_dto():
         "triage_items",
         "clarification",
         "lexicon_blind_spot",
+        "lexicon_totals",
     }
     assert re.fullmatch(r"RUN-[0-9A-F]{8}", payload["run_alias"])
     assert payload["status"] == "VERIFIED_RESULT"

@@ -125,12 +125,47 @@ function renderBlindSpot(blindSpot) {
   }
 }
 
+function renderLexiconTotals(payload) {
+  const block = document.querySelector("#lexicon-block");
+  if (!block) return;
+  const totals = payload.lexicon_totals;
+  if (!totals || !totals.matched_count) {
+    block.hidden = true;
+    return;
+  }
+  block.hidden = false;
+  const fields = [
+    ["supporting", "#lexicon-supporting"],
+    ["opposing", "#lexicon-opposing"],
+    ["conflicting", "#lexicon-conflicting"],
+    ["insufficient", "#lexicon-insufficient"],
+  ];
+  fields.forEach(([key, selector]) => {
+    const node = document.querySelector(selector);
+    if (node) node.textContent = Number(totals[key] || 0).toLocaleString();
+  });
+  const conflictShare = Math.round(((totals.conflicting || 0) / totals.matched_count) * 100);
+  const note = document.querySelector("#lexicon-note");
+  if (note) {
+    note.textContent =
+      "按同一套词表判定全部 " + totals.matched_count.toLocaleString()
+      + " 条匹配评论, 只作初步参考: 词表会误判"
+      + (conflictShare ? "、且 " + conflictShare + "% 的评论同时出现正反词" : "")
+      + "; 不能替代逐条核对, 也不能当结论。";
+  }
+}
+
 function renderBars(payload) {
   const fallback = { supporting: 0, opposing: 0, conflicting: 0, insufficient: 0 };
   payload.evidence.forEach((item) => { fallback[item.polarity] += 1; });
   const totals = payload.signal_totals && Object.keys(payload.signal_totals).length
     ? payload.signal_totals
     : fallback;
+  const scope = document.querySelector("#signal-scope-label");
+  if (scope) {
+    scope.textContent = "仅 " + (payload.evidence_count || 0).toLocaleString()
+      + " 条核查样本, 非全部 " + (payload.matched_count || 0).toLocaleString() + " 条";
+  }
   const keys = [["supporting", "支持"], ["opposing", "反对"], ["conflicting", "冲突"], ["insufficient", "信息不足"]];
   const total = keys.reduce((sum, [key]) => sum + (totals[key] || 0), 0);
   keys.forEach(([key, name]) => {
@@ -911,6 +946,7 @@ function renderResult(payload, options = {}) {
   renderBlindSpot(payload.lexicon_blind_spot);
   setStatus(payload.status);
   renderBars(payload);
+  renderLexiconTotals(payload);
   renderCoverage(payload);
   renderProductSignals(payload);
   renderEvidence(payload.evidence);

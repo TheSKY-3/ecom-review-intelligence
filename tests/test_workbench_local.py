@@ -67,7 +67,7 @@ def _local_fixture(tmp_path):
     return store, checkpoint, config, private_product_id, private_review, evidence_id
 
 
-def _blind_spot_fixture(tmp_path):
+def _blind_spot_fixture(tmp_path, extra_reviews=()):
     store = tmp_path / "evidence.sqlite"
     checkpoint = tmp_path / "checkpoint.sqlite"
     snapshot, contract = "a" * 64, "b" * 64
@@ -84,6 +84,7 @@ def _blind_spot_fixture(tmp_path):
         ("it makes a lot of noise after weeks", 1.0),
         ("some noise overnight", 5.0),
         ("noise from the pump", 2.0),
+        *extra_reviews,
     ]
     with sqlite3.connect(store) as connection:
         connection.execute(
@@ -148,6 +149,11 @@ def test_diagnosis_reports_lexicon_blind_spot_and_keeps_review_text_private(tmp_
     assert blind_spot["insufficient_low_rating_count"] == 2
     assert "词表盲区" in blind_spot["note"]
     assert "3" in blind_spot["note"] and "2" in blind_spot["note"]
+    totals = payload["lexicon_totals"]
+    assert totals["matched_count"] == 4
+    assert totals["opposing"] == 1
+    assert totals["insufficient"] == 3
+    assert totals["supporting"] == 0 and totals["conflicting"] == 0
     serialized = json.dumps(payload, ensure_ascii=False)
     assert "a lot of noise" not in serialized
     assert "overnight" not in serialized
@@ -178,6 +184,46 @@ def test_run_without_lexicon_gaps_has_no_blind_spot(tmp_path):
 
     assert response.status_code == 201
     assert response.json()["lexicon_blind_spot"] is None
+
+
+def test_lexicon_totals_cover_every_match_not_just_the_sample(tmp_path):
+    store, checkpoint, config, private_product_id = _blind_spot_fixture(
+        tmp_path,
+        extra_reviews=(
+            ("noise loud again", 1.0),
+            ("a little noise but quiet", 4.0),
+            ("noise quiet mix", 3.0),
+        ),
+    )
+    service = P6BackedWorkbenchService(
+        store_path=store,
+        checkpoint_path=checkpoint,
+        trace_path=tmp_path / "workbench-traces.jsonl",
+        config=config,
+        product_ids_by_code={"frostline": private_product_id},
+        uuid_factory=lambda: UUID("00000000-0000-4000-8000-000000000003"),
+    )
+    client = TestClient(create_workbench_app(service=service))
+
+    response = client.post(
+        "/api/v1/runs",
+        json={
+            "workflow": "diagnosis",
+            "product_codes": ["frostline"],
+            "product_query": None,
+            "aspect": "noise",
+            "question": "Which signal should operations verify?",
+        },
+    )
+
+    assert response.status_code == 201
+    payload = response.json()
+    assert payload["matched_count"] == 7
+    assert payload["evidence_count"] == 5
+    totals = payload["lexicon_totals"]
+    assert totals["matched_count"] == 7
+    assert sum(totals[key] for key in ("supporting", "opposing", "conflicting", "insufficient")) == 7
+    assert sum(payload["signal_totals"].values()) == 5, "sample signals stay sample-scoped"
 
 
 def _write_model_labels(tmp_path, records):

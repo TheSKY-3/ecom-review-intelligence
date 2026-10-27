@@ -105,6 +105,16 @@ class LexiconBlindSpotView(_PublicModel):
     model_labeler: str | None = Field(default=None, max_length=80)
 
 
+class LexiconTotalsView(_PublicModel):
+    """Full-set word-list counts: a rough screen, never a verified result."""
+
+    matched_count: int = Field(ge=0)
+    supporting: int = Field(ge=0)
+    opposing: int = Field(ge=0)
+    conflicting: int = Field(ge=0)
+    insufficient: int = Field(ge=0)
+
+
 class EvidenceRowView(_PublicModel):
     evidence_ref: str
     locator_line: int = Field(ge=1)
@@ -267,3 +277,4 @@ class WorkbenchRun(_PublicModel):
     triage_items: tuple[TriageItem, ...] = ()
     clarification: ClarificationView | None = None
     lexicon_blind_spot: LexiconBlindSpotView | None = None
+    lexicon_totals: LexiconTotalsView | None = None

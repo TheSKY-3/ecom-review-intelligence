@@ -85,6 +85,7 @@ from ecom_review_intelligence.workbench_contracts import (
     InsightRejected,
     InsightView,
     LexiconBlindSpotView,
+    LexiconTotalsView,
     ProductSignalSummary,
     ProductView,
     TriageItem,
@@ -811,6 +812,11 @@ class P6BackedWorkbenchService(SyntheticWorkbenchService):
         lexicon_blind_spot = self._lexicon_blind_spot(
             list(code_by_local), request.aspect.value
         )
+        lexicon_totals = (
+            self._lexicon_totals(list(code_by_local), request.aspect.value)
+            if total_matched
+            else None
+        )
         return WorkbenchRun(
             run_token=token,
             run_alias=_run_alias(token),
@@ -830,6 +836,7 @@ class P6BackedWorkbenchService(SyntheticWorkbenchService):
             evidence_count=evidence_count,
             matched_count=total_matched,
             signal_totals=totals,
+            lexicon_totals=lexicon_totals,
             product_summaries=product_summaries,
             degraded=status != "VERIFIED_RESULT",
             next_action=(
@@ -1527,6 +1534,37 @@ class P6BackedWorkbenchService(SyntheticWorkbenchService):
             else:
                 buckets["none"] += int(count)
         return buckets
+
+    def _lexicon_totals(self, product_ids: list[str], aspect: str) -> LexiconTotalsView:
+        """Count word-list directions over every matched review, not just the sample."""
+
+        connection = sqlite3.connect(f"file:{self._store_path.as_posix()}?mode=ro", uri=True)
+        try:
+            vocabulary = connection.execute(
+                "SELECT value FROM store_meta WHERE key = 'aspect_terms'"
+            ).fetchone()
+            polarity_row = connection.execute(
+                "SELECT value FROM store_meta WHERE key = 'polarity_terms'"
+            ).fetchone()
+            if vocabulary is None or polarity_row is None:
+                raise WorkbenchInputError("Aspect is outside the local evidence contract.")
+            if aspect not in json.loads(str(vocabulary[0])):
+                raise WorkbenchInputError("Aspect is outside the local evidence contract.")
+            terms = json.loads(str(vocabulary[0]))[aspect]
+            polarity_terms = json.loads(str(polarity_row[0]))
+            predicates = " OR ".join("lower(text) LIKE ?" for _ in terms)
+            placeholders = ",".join("?" for _ in product_ids)
+            rows = connection.execute(
+                f"SELECT text FROM reviews WHERE parent_asin IN ({placeholders}) "
+                f"AND ({predicates})",
+                [*product_ids, *[f"%{term.lower()}%" for term in terms]],
+            ).fetchall()
+        finally:
+            connection.close()
+        totals = {"supporting": 0, "opposing": 0, "conflicting": 0, "insufficient": 0}
+        for (text,) in rows:
+            totals[_polarity(str(text), polarity_terms)] += 1
+        return LexiconTotalsView(matched_count=len(rows), **totals)
 
     def _total_matched(self, product_ids: list[str], aspect: str) -> int:
         """Count every frozen-contract match behind the bounded retrieval sample."""

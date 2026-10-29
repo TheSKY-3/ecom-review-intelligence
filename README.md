@@ -8,7 +8,7 @@
 受约束 Agent + 本地证据引擎 + 逐字段校验：模型只能看受控的聚合卡和最多 5 条抽样原文，不能任意查询；引用逐字回原文核对、数字逐个对账，写不出材料里没有的事实。
 
 ![gate](https://img.shields.io/badge/%E5%B7%A5%E7%A8%8B%E9%97%A8-P0%E2%80%93P6%20PASSED-2F6B4F)
-![tests](https://img.shields.io/badge/tests-496%20passed-2F6B4F)
+![tests](https://img.shields.io/badge/tests-559%20passed-2F6B4F)
 ![desktop](https://img.shields.io/badge/Windows-exe%2042%20MB-3E6B96)
 ![python](https://img.shields.io/badge/Python-3.12-3E6B96)
 ![license](https://img.shields.io/badge/license-MIT-3E6B96)
@@ -32,6 +32,10 @@
 「模型设置」里填自己的 DeepSeek key 才能启用两条模型步骤；key 只存在当前浏览器，关闭即清：
 
 ![model settings](docs/assets/p7-workbench-settings.png)
+
+一次诊断跑完，右侧会出现「导出这批评论」：选商品、点「导出 CSV」，就把这个商品在当前方面下的全部匹配评论写成表格（766 行，含「参与本次判断」标记和三列人工标注位）。导出不调用模型、不需要密钥；复制按钮给的是相对本机数据目录的路径：
+
+![export matched reviews](docs/assets/p7-workbench-export.png)
 
 界面图用真实 Chrome 截自 `scripts/serve_demo.py --mode bundled` 的演示数据；对话图保留了问题与执行轨迹、裁掉了回答区，避免把评论原文带进公开仓库。
 
@@ -70,6 +74,8 @@
 | 02 证据比较 | 2–5 个商品同维度对比，只陈述方向 | AGLUCKY vs GE Profile「制冰质量」→「A 占优·强 / B 观察·强」 |
 | 03 问题分诊 | 产出"先查什么"的顺序与责任团队 | 三款商品 → 核查队列，冲突证据显式标出 |
 
+三种工作流跑完都能导出当前运行的命中评论为 CSV，方便人工标注复核（见上方「导出这批评论」）。
+
 ## 一个负结果，写在这里
 
 「证据够不够」这个问题被两轮实验否掉了：手写计数规则跨两批人工标注从 0.65 掉到 0.35；模型探针 0.55 / 0.80，宽松提示词有 37.5% 假阳性——换批次就崩，学到的不是判断而是批次特征。所以模型只做"把评论读成结构"，够不够仍由确定性分档决定。记录见 [docs/decisions/phase-7-model-role.md](docs/decisions/phase-7-model-role.md)。
@@ -78,9 +84,8 @@
 
 ## 边界（读之前请先看）
 
-- **没有真人试用数据**：工程门通过不等于运营愿意用，P7 的三次真实试用尚未进行。
 - AI 步骤 15 次真实调用 14 次可用，唯一失败是"判为相关却没引用"，重试即通过；一次稳定失败（模型把编号 E1–E5 改写成 R1–R5）定位后修在提示词层。
-- 仓库自带的是固定 3 商品演示子集，不是数据分发通道：没有批量导出接口；完整类目库（165 MB）与原始 gzip 不在仓库中。
+- 仓库自带的是固定 3 商品演示子集，不是数据分发通道：导出只针对当前运行命中的评论，不做全库批量导出；完整类目库（165 MB）与原始 gzip 不在仓库中。
 - 工程门记录在 `artifacts/`；冻结评测案例集本身不在仓库（`artifacts/evals/` 被忽略），所以门是"可复算的流程"而不是"可重放的语料"。
 - 数据集来自 Amazon Reviews 2023，条款与展示边界的讨论见 [docs/data-use-and-publication.md](docs/data-use-and-publication.md)。
 

@@ -1,13 +1,13 @@
-<!doctype html>
+﻿<!doctype html>
 <html lang="zh-CN">
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="color-scheme" content="light dark">
     <title>ECom Review Intelligence</title>
-    <script src="/static/workbench-theme.js?v=20261026f"></script>
-    <link rel="stylesheet" href="/static/workbench.css?v=20261026f">
-    <script src="/static/workbench.js?v=20261026f" defer></script>
+    <script src="/static/workbench-theme.js?v=20261029d"></script>
+    <link rel="stylesheet" href="/static/workbench.css?v=20261029d">
+    <script src="/static/workbench.js?v=20261029d" defer></script>
   </head>
   <body>
     <header class="topbar">
@@ -150,14 +150,14 @@
 
         <div class="metric-strip">
           <div><span>匹配评论</span><strong id="matched-count">0</strong></div>
-          <div><span>核查样本</span><strong id="evidence-count">0</strong></div>
+          <div><span>抽样凭证</span><strong id="evidence-count">0</strong></div>
           <div><span>模式</span><strong id="workbench-mode">{{ mode|upper }}</strong></div>
           <div><span>安全降级</span><strong id="degraded-value">未触发</strong></div>
           <div><span>运行</span><strong id="run-alias">PENDING</strong></div>
         </div>
 
         <section class="visual-block">
-          <div class="visual-heading"><strong>当前核查样本的信号分布</strong><span id="signal-scope-label">仅核查样本</span></div>
+          <div class="visual-heading"><strong>抽样凭证的信号分布(逐字可核对)</strong><span id="signal-scope-label">抽样,不是统计结论</span></div>
           <div class="signal-visual" aria-label="证据信号概览">
           <div><span id="label-supporting">支持 · 0</span><i class="signal-bar supporting" id="bar-supporting"></i></div>
           <div><span id="label-opposing">反对 · 0</span><i class="signal-bar opposing" id="bar-opposing"></i></div>
@@ -174,6 +174,17 @@
           <div class="visual-heading"><strong>按商品查看</strong><span>各商品独立统计</span></div>
           <div class="product-signal-list" id="product-signal-visual"></div>
         </section>
+        {% if mode == "local" %}
+        <section class="visual-block" id="export-block" hidden>
+          <div class="visual-heading"><strong>导出这批评论</strong><span>CSV · 含评论原文 · 只存本机</span></div>
+          <div class="export-controls">
+            <select id="export-product" aria-label="选择要导出的商品"></select>
+            <button type="button" id="export-button" class="export-copy">导出 CSV</button>
+          </div>
+          <div class="export-output" id="export-output"></div>
+          <p class="insight-footnote">导出该商品在这个方面下的全部匹配评论(含「参与本次判断」标记与三列人工标注位),不调用模型、不需要密钥。文件含评论原文,只用于人工标注,不要提交进版本库。</p>
+        </section>
+        {% endif %}
         <section class="visual-block lexicon-block" id="lexicon-block" hidden>
           <div class="visual-heading"><strong>全量词表粗筛</strong><span>全部匹配评论 · 未逐条核对</span></div>
           <div class="metric-strip lexicon-strip">

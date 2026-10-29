@@ -339,3 +339,19 @@ def test_completion_audit_cli_hides_missing_local_paths(tmp_path):
         "status": "FAILED",
     }
     assert str(tmp_path) not in errors.getvalue()
+
+
+def test_audit_git_helpers_read_utf8_paths(tmp_path):
+    from ecom_review_intelligence.agent_completion_audit import _git_lines
+
+    subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
+    name = "启动工作台.bat"
+    (tmp_path / name).write_text("@echo off\n", encoding="utf-8")
+    subprocess.run(["git", "-C", str(tmp_path), "add", "--", name], check=True)
+
+    # git always prints UTF-8 paths. Decoding them with the console locale (GBK on
+    # a Chinese Windows) killed the reader thread and left stdout empty, so the
+    # audit crashed on a repository that tracks a non-ASCII file name.
+    assert _git_lines(tmp_path, ["ls-files", "-z"], separator="\0") == [name]
+    with pytest.raises(CompletionAuditError, match="not clean"):
+        validate_clean_tracked_worktree(tmp_path)

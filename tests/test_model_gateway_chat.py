@@ -109,6 +109,7 @@ def test_turn_runs_a_tool_then_submits_the_answer():
     assert tool_names == [
         "read_card_reviews",
         "query_run_stats",
+        "export_reviews",
         "create_run",
         "submit_chat_answer",
     ]

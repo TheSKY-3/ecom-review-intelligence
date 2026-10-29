@@ -1,7 +1,7 @@
 # Execution status
 
 The canonical plan is [master-plan.md](master-plan.md). This page is the compact
-status register; phase-specific details belong in docs/superpowers/plans.
+status register; phase-specific implementation plans are kept outside this repository.
 
 | Phase | Status | Verified gate or remaining gate | Next controlled action |
 |---|---|---|---|

@@ -33,8 +33,14 @@ CHAT_SYSTEM_PROMPT = (
     "each with an opaque id like C1-E1; query_run_stats returns predefined "
     "aggregate statistics over the current run's matched reviews; create_run "
     "starts a new analysis run over the catalog products listed in the "
-    "context. You cannot run SQL, see file paths, or touch anything outside "
+    "context; export_reviews writes every matched review of one product in the "
+    "current aspect to a local CSV for human annotation. You cannot run SQL, "
+    "see file paths, or touch anything outside "
     "this run. "
+    "export_reviews rules: call it only when the operator asks for the reviews "
+    "themselves, an export, a table, or a file to annotate; it is available at "
+    "most once per run, and the tool returns the row and bucket counts. Never "
+    "write the file path into the answer: the interface shows it. "
     "create_run rules: the shape is diagnosis=1 product, comparison=2 products, "
     "triage 1-5 products, and the aspect must be one of the catalog aspects. "
     "After create_run succeeds, the new run replaces the old one as your ONLY "
@@ -59,7 +65,13 @@ CHAT_SYSTEM_PROMPT = (
     "only in the citation field, and an id like C1-E1 appearing in supported, "
     "point text, quote, or not_supported discards the whole answer. Every "
     "stats_point must restate one number from a query_run_stats "
-    "result with the exact stat, product, metric, and value. Numbers are checked "
+    "result with the exact stat, product, metric, and value. The two direction "
+    "stats never mix scopes: signal_totals counts only the reviews shown in the "
+    "cards and is denominated by sample_size, while full_population_totals "
+    "counts every matched review and is denominated by matched_total. To say "
+    "anything about the whole set, query full_population_totals and cite it; "
+    "never present a signal_totals count as a count across all matched reviews. "
+    "Numbers are checked "
     "too: a number in supported or not_supported must appear character for "
     "character in a tool result you read this session (a review text, a card's "
     "matched-review count, or a query_run_stats row); a number in a review "
@@ -77,11 +89,31 @@ CHAT_SYSTEM_PROMPT = (
 MAX_CHAT_TURNS = 8
 MAX_TOOL_ROUNDS = 4
 MAX_CARD_REVIEWS = 5
-STAT_KEYS = ("signal_totals", "rating_distribution")
+STAT_KEYS = (
+    "signal_totals",
+    "full_population_totals",
+    "export_totals",
+    "rating_distribution",
+)
 _RATING_BUCKETS = ("r1", "r2", "r3", "r4", "r5", "none")
-_SIGNAL_METRICS = ("matched", "supporting", "opposing", "conflicting", "insufficient")
+# The two direction stats answer different questions and must never be mixed:
+# signal_totals counts the few reviews actually shown, full_population_totals
+# counts every matched review with the same word list. Neither carries the other
+# scope's denominator, so a sentence cannot pair a population total with a
+# sample count.
+_SIGNAL_METRICS = ("sample_size", "supporting", "opposing", "conflicting", "insufficient")
+_POPULATION_METRICS = (
+    "matched_total",
+    "supporting",
+    "opposing",
+    "conflicting",
+    "insufficient",
+)
+_EXPORT_METRICS = ("exported", "matched_total", "supporting", "opposing", "conflicting", "insufficient")
 STAT_METRICS = {
     "signal_totals": _SIGNAL_METRICS,
+    "full_population_totals": _POPULATION_METRICS,
+    "export_totals": _EXPORT_METRICS,
     "rating_distribution": _RATING_BUCKETS,
 }
 _CITATION_SHAPE = re.compile(r"C\d+-E\d+")
@@ -134,7 +166,20 @@ class QueryStatsArgs(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    stat_key: Literal["signal_totals", "rating_distribution"]
+    stat_key: Literal[
+        "signal_totals",
+        "full_population_totals",
+        "export_totals",
+        "rating_distribution",
+    ]
+
+
+class ExportReviewsArgs(BaseModel):
+    """Arguments for export_reviews; the number comes from the catalog whitelist."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    product_number: int = Field(ge=1, le=32)
 
 
 class CreateRunArgs(BaseModel):

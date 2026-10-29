@@ -3,8 +3,8 @@
 - Dataset snapshot ID: 44eface81cccdceb36c3fd61f93736267e63b84ba63902fac026659540518846
 - P2 audit SHA-256: 23f001beb0c856b840b9d37b97a43dcdd35ba0051a2c8fe0a858c1fb93284f40
 - Selected category: Ice Makers
-- Script Git revision: e856a064b6d8b4a82b48083344e806b1d94bee3b
-- Contract SHA-256: 180d1e8667c4ae0f7e459dca1bee658e7be7b03eafaea48c0da12ea62d44934e
+- Script Git revision: 1a94c2feccab8ce8d6811a8978a2e25f6aee49f4
+- Contract SHA-256: b93053ce55ab7d47e865de53fe02cc076f8a1eeaa1f19487ec3c41a5f6f647fa
 
 ## Field and identifier contract
 
@@ -22,7 +22,7 @@
 | cleaning_maintenance | 7959 | 0.058263 | true |
 | capacity_speed | 21795 | 0.159549 | true |
 | ease_setup | 24061 | 0.176137 | true |
-| leakage | 22669 | 0.165947 | true |
+| leakage | 2058 | 0.015065 | true |
 | size_portability | 18308 | 0.134022 | true |
 
 ## Evidence and evaluation policy

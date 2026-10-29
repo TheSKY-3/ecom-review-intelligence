@@ -11,7 +11,7 @@ from ecom_review_intelligence.engine import (
     AspectQueryResult,
     EngineError,
     Evidence,
-    query_aspect,
+    query_stratified_aspect,
     verify_citation,
 )
 
@@ -46,11 +46,27 @@ class WorkflowToolResult:
 
 @dataclass
 class ToolInvocationLedger:
+    """Bounds how many business evidence tools one run may execute.
+
+    The default of one keeps the P6 single-tool rule; a deterministic scenario
+    chain is the only caller that raises it, and always to its own declared
+    step budget.
+    """
+
+    max_executions: int = 1
     execution_count: int = field(default=0, init=False)
 
+    def __post_init__(self) -> None:
+        if self.max_executions < 1:
+            raise AgentToolError("A run must allow at least one business evidence tool.")
+
     def consume(self) -> None:
-        if self.execution_count >= 1:
-            raise AgentToolError("A run may execute only one business evidence tool.")
+        if self.execution_count >= self.max_executions:
+            if self.max_executions == 1:
+                raise AgentToolError("A run may execute only one business evidence tool.")
+            raise AgentToolError(
+                f"A run may execute at most {self.max_executions} business evidence tools."
+            )
         self.execution_count += 1
 
 
@@ -175,7 +191,10 @@ class EvidenceToolService:
         for product_id in product_ids:
             for aspect in aspects:
                 try:
-                    result: AspectQueryResult = query_aspect(
+                    # Rating-stratified, not row order: the cards are the only
+                    # readable evidence, so they must not be "the oldest five"
+                    # of a several-hundred-review match set.
+                    result: AspectQueryResult = query_stratified_aspect(
                         self.store_path,
                         (product_id,),
                         aspect,

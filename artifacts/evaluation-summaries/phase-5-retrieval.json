@@ -1,43 +1,43 @@
 {
-  "case_corpus_sha256": "9daeea21ad518635fa89afaed6491b16afdf340be48483ce99afa04f8c7a638b",
+  "case_corpus_sha256": "7c39606c4008f51881406ff73016ea03a82a678dbeb23662fab0f4e1af5943e8",
   "case_count": 27,
-  "contract_sha256": "180d1e8667c4ae0f7e459dca1bee658e7be7b03eafaea48c0da12ea62d44934e",
+  "contract_sha256": "b93053ce55ab7d47e865de53fe02cc076f8a1eeaa1f19487ec3c41a5f6f647fa",
   "data_boundary": "Aggregate-only; no product IDs, evidence IDs, review text, or local paths.",
   "dataset_snapshot_id": "44eface81cccdceb36c3fd61f93736267e63b84ba63902fac026659540518846",
-  "evaluated_at": "2026-08-02T16:52:36+00:00",
-  "git_revision": "17feacbd14acbddc09879814294fbf9fe9e50f4d",
+  "evaluated_at": "2026-09-26T02:54:57+00:00",
+  "git_revision": "1a94c2feccab8ce8d6811a8978a2e25f6aee49f4",
   "interpretation_limit": "Silver expected evidence is deterministically derived from the lexical baseline; this is a reproducibility and regression check, not an independent relevance or business-impact benchmark.",
   "label_counts": {
     "silver": 27
   },
   "metrics": {
     "fts5_bm25": {
-      "case_hit_rate": 0.869565,
-      "citation_checks": 103,
+      "case_hit_rate": 0.826087,
+      "citation_checks": 92,
       "citation_integrity": 1.0,
       "evidence_case_count": 23,
-      "expected_evidence_count": 107,
-      "mean_latency_ms": 35.999522,
+      "expected_evidence_count": 99,
+      "mean_latency_ms": 33.156296,
       "no_answer_false_positives": 0,
-      "p95_latency_ms": 49.7039,
+      "p95_latency_ms": 49.6746,
       "product_join_errors": 0,
-      "recall_at_k": 0.53271,
-      "recalled_evidence_count": 57,
-      "retrieved_evidence_count": 103
+      "recall_at_k": 0.515152,
+      "recalled_evidence_count": 51,
+      "retrieved_evidence_count": 92
     },
     "lexical": {
       "case_hit_rate": 1.0,
-      "citation_checks": 107,
+      "citation_checks": 99,
       "citation_integrity": 1.0,
       "evidence_case_count": 23,
-      "expected_evidence_count": 107,
-      "mean_latency_ms": 26.646259,
+      "expected_evidence_count": 99,
+      "mean_latency_ms": 31.182581,
       "no_answer_false_positives": 0,
-      "p95_latency_ms": 44.2079,
+      "p95_latency_ms": 52.8918,
       "product_join_errors": 0,
       "recall_at_k": 1.0,
-      "recalled_evidence_count": 107,
-      "retrieved_evidence_count": 107
+      "recalled_evidence_count": 99,
+      "retrieved_evidence_count": 99
     }
   },
   "quality_gates": {
@@ -48,7 +48,7 @@
   },
   "retrieval_limit": 5,
   "state": "PASSED",
-  "store_build_revision": "17feacbd14acbddc09879814294fbf9fe9e50f4d",
+  "store_build_revision": "1a94c2feccab8ce8d6811a8978a2e25f6aee49f4",
   "workflow_counts": {
     "comparison": 8,
     "diagnosis": 8,

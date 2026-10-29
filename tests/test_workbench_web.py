@@ -101,6 +101,20 @@ def test_evidence_detail_is_unavailable_in_synthetic_mode():
     assert detail.json()["error"]["code"] == "EVIDENCE_DETAIL_UNAVAILABLE"
 
 
+def test_export_endpoint_is_unavailable_in_synthetic_mode():
+    client = _client()
+    created = client.post("/api/v1/runs", json=_request()).json()
+
+    response = client.post(
+        f"/api/v1/runs/{created['run_token']}/exports",
+        json={"product_code": "frostline"},
+    )
+
+    assert response.status_code == 404
+    assert response.json()["error"]["code"] == "EXPORT_UNAVAILABLE"
+    assert created["run_token"] not in json.dumps(response.json()["error"])
+
+
 def test_comparison_and_triage_have_workflow_specific_outputs():
     client = _client()
 

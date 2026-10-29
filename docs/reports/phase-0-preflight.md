@@ -1,7 +1,7 @@
 # P0 preflight report
 
 - State: PASSED
-- Observed at (UTC): 2026-08-02T15:02:42+00:00
+- Observed at (UTC): 2026-10-29T04:56:37+00:00
 
 ## OFFICIAL_FACT
 
@@ -11,9 +11,9 @@
 
 ## OBSERVED_DATA
 
-- Python: 3.12.13; supported: True
+- Python: 3.12.14; supported: True
 - Operating system: Windows
-- Free bytes: 523501719552
+- Free bytes: 237601595392
 - Required bytes: 2989024780
 
 | URL | Status | Bytes | Range | Content type | ETag | Last modified | Error |

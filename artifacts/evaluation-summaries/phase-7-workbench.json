@@ -1,10 +1,10 @@
 {
   "schema_version": "p7-browser-validation-v1",
   "status": "PASSED",
-  "observed_at": "2026-08-29T06:30:16.824Z",
-  "git_revision": "47730e2eeebfc0d8239b5e11ab60d475847a1a0a",
-  "source_sha256": "78767e908a7467a6a0a2f9e75fe374af9f14ca116f8302df0df1422eb875b508",
-  "source_dirty": false,
+  "observed_at": "2026-09-26T13:13:48.935Z",
+  "git_revision": "cc83aab69f840f0ac29cc3739a7b9147fcb59c4b",
+  "source_sha256": "7eaf78892d06438403c0793a526f09a176085e7a86308d6a350d49d61705519f",
+  "source_dirty": true,
   "source_paths": [
     "pyproject.toml",
     "scripts/run_phase7_workbench.py",
@@ -47,41 +47,41 @@
   "screenshots": [
     {
       "path": "docs/assets/p7-workbench-desktop.png",
-      "sha256": "a4083fff1704b151993aeb3e58bbde7e44a8c7c9e3a5fc02351418398d0651b9"
+      "sha256": "6242cf8e4f1497f1ada5e035e6c2dfc6f776fb947aaca88f7f26917883c653b6"
     },
     {
       "path": "docs/assets/p7-workbench-mobile.png",
-      "sha256": "ced512cf282c292720c8dde3b3592a451aa4bbda29bc8e2d85e48f82d469d373"
+      "sha256": "78f24f92f3f63273e8250bfeb5b22622d32a5e9c68b202a4c449cac07b605514"
     }
   ],
   "observations": [
     {
       "task": "SKU diagnosis",
       "workflow": "diagnosis",
-      "completion_ms": 25,
-      "first_evidence_ms": 25,
+      "completion_ms": 247,
+      "first_evidence_ms": 247,
       "status": "VERIFIED_RESULT",
-      "evidence_count": 1,
+      "evidence_count": 5,
       "adopted": "not_assessed",
       "failure_reason": null
     },
     {
       "task": "Competitive evidence comparison",
       "workflow": "comparison",
-      "completion_ms": 26,
-      "first_evidence_ms": 26,
+      "completion_ms": 405,
+      "first_evidence_ms": 405,
       "status": "VERIFIED_RESULT",
-      "evidence_count": 2,
+      "evidence_count": 10,
       "adopted": "not_assessed",
       "failure_reason": null
     },
     {
       "task": "Operations issue triage",
       "workflow": "triage",
-      "completion_ms": 27,
-      "first_evidence_ms": 27,
+      "completion_ms": 276,
+      "first_evidence_ms": 276,
       "status": "VERIFIED_RESULT",
-      "evidence_count": 2,
+      "evidence_count": 5,
       "adopted": "not_assessed",
       "failure_reason": null
     }

@@ -133,6 +133,22 @@ class EvidenceDetail(_PublicModel):
     rows: tuple[EvidenceRowView, ...] = ()
 
 
+class ExportRequest(_PublicModel):
+    """One click on the result page: export one product's matched reviews."""
+
+    product_code: str = Field(min_length=1, max_length=64)
+
+
+class ExportView(_PublicModel):
+    """Where a review export landed; the folder is always project-relative."""
+
+    schema_version: Literal["p7-export-v1"] = "p7-export-v1"
+    product: str
+    exported: int = Field(ge=0)
+    matched_total: int = Field(ge=0)
+    folder: str = ""
+
+
 class InsightRequest(_PublicModel):
     run_token: str = Field(min_length=1, max_length=64)
     card_alias: str = Field(min_length=1, max_length=16)
@@ -187,6 +203,8 @@ class ChatTurnView(_PublicModel):
     model_calls: int = Field(default=0, ge=0)
     session_turns: int = Field(default=0, ge=0)
     created_run_token: str | None = None
+    export_path: str | None = None
+    export_rows: int = Field(default=0, ge=0)
 
 
 Verdict = Literal["confirmed", "doubtful", "rejected"]

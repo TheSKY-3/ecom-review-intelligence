@@ -5,9 +5,6 @@ data/
 !data/public/state
 tmp/
 private/
-简历/
-规划/
-学习路线/
 
 # Local Python environments and caches
 .venv/

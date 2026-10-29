@@ -24,6 +24,11 @@ dev = [
     "pytest>=8.0",
     "ruff>=0.6",
 ]
+desktop = [
+    "pyinstaller>=6.22,<6.23",
+    "pywebview>=6.2,<6.3",
+]
+
 [tool.setuptools.packages.find]
 where = ["src"]
 

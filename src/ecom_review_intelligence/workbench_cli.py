@@ -80,6 +80,8 @@ def workbench_main(
                 checkpoint_path=checkpoint_path,
                 config=config,
                 product_ids_by_code=product_ids_by_code,
+                export_dir=Path(args.project_root) / "tmp" / "exports",
+                project_root=Path(args.project_root),
             )
         except Exception:  # noqa: BLE001 - CLI boundary returns a fixed prerequisite error
             errors.write(

@@ -610,3 +610,105 @@ def test_evidence_detail_rejects_unknown_alias_and_token(tmp_path):
     assert missing_alias.json()["error"]["code"] == "EVIDENCE_DETAIL_UNAVAILABLE"
     assert missing_token.status_code == 404
     assert missing_token.json()["error"]["code"] == "RUN_NOT_FOUND"
+
+
+def _export_service(tmp_path):
+    store, checkpoint, config, private_product_id, private_review, _evidence_id = (
+        _local_fixture(tmp_path)
+    )
+
+    def no_model_gateway():
+        raise AssertionError("The review export must not build or call a model gateway.")
+
+    service = P6BackedWorkbenchService(
+        store_path=store,
+        checkpoint_path=checkpoint,
+        trace_path=tmp_path / "workbench-traces.jsonl",
+        config=config,
+        product_ids_by_code={"frostline": private_product_id},
+        insight_gateway_factory=no_model_gateway,
+        chat_gateway_factory=no_model_gateway,
+        export_dir=tmp_path / "exports",
+        project_root=tmp_path,
+        uuid_factory=lambda: UUID("00000000-0000-4000-8000-000000000007"),
+    )
+    return service, private_review
+
+
+def _run_token(client):
+    created = client.post(
+        "/api/v1/runs",
+        json={
+            "workflow": "diagnosis",
+            "product_codes": ["frostline"],
+            "product_query": None,
+            "aspect": "noise",
+            "question": "Which signal should operations verify?",
+        },
+    )
+    assert created.status_code == 201
+    return created.json()["run_token"]
+
+
+def test_export_endpoint_writes_a_csv_without_any_model_key(tmp_path):
+    service, private_review = _export_service(tmp_path)
+    client = TestClient(create_workbench_app(service=service))
+    token = _run_token(client)
+
+    response = client.post(
+        f"/api/v1/runs/{token}/exports",
+        json={"product_code": "frostline"},
+    )
+
+    assert response.status_code == 201, response.text
+    payload = response.json()
+    serialized = json.dumps(payload, ensure_ascii=False)
+    assert payload["schema_version"] == "p7-export-v1"
+    assert payload["product"] == "Private local title"
+    assert payload["exported"] == 1
+    assert payload["matched_total"] == 1
+    assert payload["folder"].startswith("exports/")
+    assert str(tmp_path) not in serialized
+    assert not re.search(r"[A-Za-z]:[\\/]", serialized)
+    assert not re.search(r"[0-9a-f]{64}", serialized)
+    lines = (tmp_path / payload["folder"] / "reviews.csv").read_text(
+        encoding="utf-8-sig"
+    ).splitlines()
+    header = lines[0].split(",")
+    assert "参与本次判断" in header
+    assert len(lines) == 2
+    assert private_review in lines[1]
+    assert lines[1].split(",")[header.index("参与本次判断")] == "是"
+    assert str(service._store_path) not in serialized
+
+
+def test_second_export_of_the_same_run_is_rejected(tmp_path):
+    service, _review = _export_service(tmp_path)
+    client = TestClient(create_workbench_app(service=service))
+    token = _run_token(client)
+
+    first = client.post(f"/api/v1/runs/{token}/exports", json={"product_code": "frostline"})
+    second = client.post(f"/api/v1/runs/{token}/exports", json={"product_code": "frostline"})
+
+    assert first.status_code == 201
+    body = second.json()
+    assert second.status_code == 409
+    assert body["error"]["code"] == "EXPORT_ALREADY_DONE"
+    assert body["folder"] == first.json()["folder"]
+    assert body["exported"] == first.json()["exported"]
+    assert len(list((tmp_path / "exports").iterdir())) == 1
+
+
+def test_export_endpoint_rejects_a_product_outside_the_run(tmp_path):
+    service, _review = _export_service(tmp_path)
+    client = TestClient(create_workbench_app(service=service))
+    token = _run_token(client)
+
+    response = client.post(
+        f"/api/v1/runs/{token}/exports",
+        json={"product_code": "not-in-this-run"},
+    )
+
+    assert response.status_code == 422
+    assert response.json()["error"]["code"] == "INVALID_INPUT"
+    assert not (tmp_path / "exports").exists()

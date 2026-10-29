@@ -128,6 +128,11 @@ def load_bundled_service(root: Path | None = None) -> P6BackedWorkbenchService |
         config=config,
         product_ids_by_code=_bundled_product_ids(store),
         verdict_path=state / "verdicts.jsonl",
+        # A packaged app must not write next to the exe, and its working directory is
+        # whatever the shell that launched it used. Exports therefore live beside the
+        # checkpoints, and the page shows the folder relative to that state directory.
+        export_dir=state / "exports",
+        project_root=state,
     )
 
 

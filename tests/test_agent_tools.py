@@ -168,3 +168,56 @@ def test_lineage_or_product_shape_mismatch_fails_closed(store_path: Path) -> Non
     )
     with pytest.raises(AgentToolError, match="two to five"):
         service.compare_products(("B001",), ("noise",))
+
+def _stratified_store(tmp_path: Path) -> Path:
+    """Seven noise reviews: the five earliest are 5-star, the last two are 1-star."""
+
+    path = tmp_path / "stratified.sqlite"
+    initialize_store(
+        path,
+        snapshot_id=SNAPSHOT,
+        contract_sha256=CONTRACT,
+        aspect_terms={"noise": ("noise",)},
+        polarity_terms={"supporting": ("quiet",), "opposing": ("loud",)},
+    )
+    reviews = (
+        (1, "B001", "noise quiet", 5.0),
+        (2, "B001", "noise quiet", 5.0),
+        (3, "B001", "noise quiet", 5.0),
+        (4, "B001", "noise quiet", 5.0),
+        (5, "B001", "noise quiet", 5.0),
+        (6, "B001", "noise loud", 1.0),
+        (7, "B001", "noise loud", 1.0),
+    )
+    with sqlite3.connect(path) as connection:
+        connection.execute("INSERT INTO products(parent_asin, title) VALUES (?, ?)", ("B001", "Alpha"))
+        connection.executemany(
+            """
+            INSERT INTO reviews(
+                evidence_id, source_line, parent_asin, text, rating, timestamp,
+                verified_purchase, helpful_vote
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            [
+                (compute_evidence_id(SNAPSHOT, line), line, product, text, rating, line, 1, 0)
+                for line, product, text, rating in reviews
+            ],
+        )
+    return path
+
+
+def test_diagnosis_sample_covers_low_star_reviews_instead_of_row_order(tmp_path: Path) -> None:
+    store = _stratified_store(tmp_path)
+    service = EvidenceToolService(
+        store,
+        expected_snapshot_id=SNAPSHOT,
+        expected_contract_sha256=CONTRACT,
+        retrieval_limit=5,
+    )
+
+    result = service.diagnose_product("B001", ("noise",))
+
+    lines = sorted(evidence.source_line for evidence in result.items[0].evidence)
+    assert len(lines) == 5
+    assert 6 in lines and 7 in lines, lines
+    assert lines != [1, 2, 3, 4, 5]

@@ -14,6 +14,7 @@ from ecom_review_intelligence.engine import (
     build_local_store,
     compute_evidence_id,
     compute_store_content_sha256,
+    count_aspect_matches,
     initialize_store,
     query_aspect,
     query_stratified_aspect,
@@ -63,6 +64,45 @@ def test_deterministic_query_returns_revalidatable_exact_product_evidence(tmp_pa
     assert result.evidence[0].polarity == "supporting"
     assert verify_citation(store_path, first_evidence_id) is True
     assert verify_citation(store_path, second_evidence_id) is True
+
+
+def test_count_aspect_matches_reports_the_true_total_not_the_sample(tmp_path: Path) -> None:
+    store_path = tmp_path / "evidence.sqlite"
+    snapshot_id = "a" * 64
+    initialize_store(
+        store_path,
+        snapshot_id=snapshot_id,
+        contract_sha256="b" * 64,
+        aspect_terms={"noise": ("noise", "quiet", "loud")},
+        polarity_terms={"supporting": ("quiet",), "opposing": ("loud",)},
+    )
+    reviews = [(index, "product-a", "quiet ice maker") for index in range(1, 8)]
+    reviews.append((8, "product-b", "quiet ice maker"))
+    with sqlite3.connect(store_path) as connection:
+        connection.executemany(
+            "INSERT INTO products(parent_asin, title) VALUES (?, ?)",
+            [("product-a", "A"), ("product-b", "B")],
+        )
+        connection.executemany(
+            """
+            INSERT INTO reviews(
+                evidence_id, source_line, parent_asin, text, rating, timestamp,
+                verified_purchase, helpful_vote
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            [
+                (compute_evidence_id(snapshot_id, line), line, product, text, 5.0, 1, 1, 0)
+                for line, product, text in reviews
+            ],
+        )
+
+    sampled = query_aspect(store_path, ("product-a",), "noise", limit=2)
+
+    assert len(sampled.evidence) == 2
+    assert count_aspect_matches(store_path, ("product-a",), "noise") == 7
+    assert count_aspect_matches(store_path, ("product-a", "product-b"), "noise") == 8
+    with pytest.raises(EngineError, match="frozen contract"):
+        count_aspect_matches(store_path, ("product-a",), "unfrozen")
 
 
 def test_query_rejects_an_aspect_outside_the_frozen_contract(tmp_path: Path) -> None:

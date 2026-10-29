@@ -163,8 +163,9 @@ function renderBars(payload) {
     : fallback;
   const scope = document.querySelector("#signal-scope-label");
   if (scope) {
-    scope.textContent = "仅 " + (payload.evidence_count || 0).toLocaleString()
-      + " 条核查样本, 非全部 " + (payload.matched_count || 0).toLocaleString() + " 条";
+    scope.textContent = "抽样凭证 " + (payload.evidence_count || 0).toLocaleString()
+      + " 条, 非全部 " + (payload.matched_count || 0).toLocaleString()
+      + " 条 · 看规模请用下方全量粗筛";
   }
   const keys = [["supporting", "支持"], ["opposing", "反对"], ["conflicting", "冲突"], ["insufficient", "信息不足"]];
   const total = keys.reduce((sum, [key]) => sum + (totals[key] || 0), 0);
@@ -228,6 +229,66 @@ function renderProductSignals(payload) {
   });
 }
 
+function renderExportControls(payload) {
+  const block = document.querySelector("#export-block");
+  const select = document.querySelector("#export-product");
+  const output = document.querySelector("#export-output");
+  if (!block || !select) return;
+  const summaries = (payload.product_summaries || []).filter((item) => item.product_code);
+  block.hidden = !state.runToken || !summaries.length || !(payload.evidence_count > 0);
+  select.replaceChildren();
+  summaries.forEach((item) => {
+    const option = document.createElement("option");
+    option.value = item.product_code;
+    option.textContent = `${productLabel(item.product_code)} · ${item.matched_count.toLocaleString()} 条匹配`;
+    select.append(option);
+  });
+  if (output) output.replaceChildren();
+}
+
+async function exportReviews() {
+  const select = document.querySelector("#export-product");
+  const button = document.querySelector("#export-button");
+  const output = document.querySelector("#export-output");
+  if (!state.runToken || !select || !button || !output) return;
+  button.disabled = true;
+  button.textContent = "导出中…";
+  output.replaceChildren();
+  try {
+    const response = await fetch(`/api/v1/runs/${state.runToken}/exports`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ product_code: select.value }),
+    });
+    const payload = await response.json();
+    if (response.status === 409 && payload.error?.code === "EXPORT_ALREADY_DONE") {
+      output.append(
+        textElement("p", "signal-caveat", "本次运行已经导出过一次,不能重复导出;这是上次的位置:"),
+      );
+      if (payload.folder) output.append(exportBoxElement(payload.folder, payload.exported || 0));
+      return;
+    }
+    if (!response.ok) {
+      throw new Error(payload.error?.message || "导出失败");
+    }
+    output.append(exportBoxElement(payload.folder, payload.exported));
+    if (payload.matched_total !== payload.exported) {
+      output.append(
+        textElement(
+          "p",
+          "insight-footnote",
+          `匹配 ${payload.matched_total} 条,CSV 里是 ${payload.exported} 条。`,
+        ),
+      );
+    }
+  } catch (error) {
+    output.append(textElement("p", "signal-caveat", `导出没有成功: ${error.message}`));
+  } finally {
+    button.disabled = false;
+    button.textContent = "导出 CSV";
+  }
+}
+
 function renderWorkflowOutput(payload) {
   const output = document.querySelector("#workflow-output");
   output.replaceChildren();
@@ -236,7 +297,7 @@ function renderWorkflowOutput(payload) {
     table.className = "output-table";
     const head = document.createElement("thead");
     const headRow = document.createElement("tr");
-    ["商品", "信号", "方向", "强度", "匹配评论", "核查样本"].forEach((value) => headRow.append(textElement("th", "", value)));
+    ["商品", "信号", "方向", "强度", "匹配评论", "抽样凭证"].forEach((value) => headRow.append(textElement("th", "", value)));
     head.append(headRow);
     const body = document.createElement("tbody");
     payload.comparison_rows.forEach((item) => {
@@ -949,6 +1010,7 @@ function renderResult(payload, options = {}) {
   renderLexiconTotals(payload);
   renderCoverage(payload);
   renderProductSignals(payload);
+  renderExportControls(payload);
   renderEvidence(payload.evidence);
   if (!options.keepChat) resetQa();
   if (chatRunHint) chatRunHint.textContent = `当前运行: ${payload.run_alias}`;
@@ -1141,6 +1203,47 @@ function describeViolations(reason) {
     .join("; ");
 }
 
+function exportBoxElement(folder, exported) {
+  const box = document.createElement("div");
+  box.className = "export-box";
+  box.append(
+    textElement("strong", "insight-label", `已导出 ${exported} 条评论(CSV,含评论原文)`),
+  );
+  const pathRow = document.createElement("div");
+  pathRow.className = "export-path";
+  pathRow.append(textElement("code", "", folder));
+  const copy = document.createElement("button");
+  copy.type = "button";
+  copy.className = "export-copy";
+  copy.textContent = "复制路径";
+  copy.addEventListener("click", () => {
+    const done = (text) => {
+      copy.textContent = text;
+      setTimeout(() => {
+        copy.textContent = "复制路径";
+      }, 1500);
+    };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(folder).then(
+        () => done("已复制"),
+        () => done("复制失败,请手动选中"),
+      );
+    } else {
+      done("请手动选中复制");
+    }
+  });
+  pathRow.append(copy);
+  box.append(pathRow);
+  box.append(
+    textElement(
+      "p",
+      "insight-footnote",
+      "路径相对本机数据目录(站点不返回绝对路径);文件含评论原文,只用于人工标注,不要提交进版本库。",
+    ),
+  );
+  return box;
+}
+
 function renderChatAnswer(payload) {
   const box = document.createElement("div");
   box.className = "insight-result";
@@ -1187,6 +1290,9 @@ function renderChatAnswer(payload) {
   }
   sections.push(section("不能说什么", "insight-not-supported", [line(payload.not_supported)]));
   sections.forEach((item) => box.append(item));
+  if (payload.export_path) {
+    box.append(exportBoxElement(payload.export_path, payload.export_rows));
+  }
   box.append(
     textElement(
       "p",
@@ -1275,4 +1381,9 @@ if (qaForm) {
     qaInput.style.height = "auto";
     qaInput.style.height = `${Math.min(qaInput.scrollHeight, 120)}px`;
   });
+}
+
+const exportButton = document.querySelector("#export-button");
+if (exportButton) {
+  exportButton.addEventListener("click", exportReviews);
 }

@@ -5,14 +5,6 @@ data/processed/
 artifacts/indexes/
 artifacts/evals/
 
-# Private career material and historical planning notes
-/简历/
-/规划/
-/.tmp_resume_txt/
-
-# Private study material and third-party course handouts
-/学习路线/
-
 # Pytest --basetemp leftovers: these hold copies of the raw gzip files and
 # full review stores under nested data/ paths that the anchored data/ rules
 # above do not reach. 37 such directories existed locally; never commit them.
@@ -50,12 +42,6 @@ node_modules/
 build_tmp/
 build_tmp2/
 output/obsidian/
-
-# Explained notes: raw-review screenshots and their compiled PDF stay local
-docs/explained/assets/
-docs/explained/main.pdf
-docs/explained/main.aux
-docs/explained/main.log
 
 # The published demo subset ships with the project; its runtime state does not.
 !data/public/

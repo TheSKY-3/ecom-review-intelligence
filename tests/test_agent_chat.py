@@ -15,8 +15,12 @@ MATERIALS = {
 
 STATS_ROWS = {
     "signal_totals": [
-        {"product": "商品 A", "matched": 42, "supporting": 1, "opposing": 3,
+        {"product": "商品 A", "sample_size": 42, "supporting": 1, "opposing": 3,
          "conflicting": 0, "insufficient": 38},
+    ],
+    "full_population_totals": [
+        {"product": "商品 A", "matched_total": 766, "supporting": 286, "opposing": 166,
+         "conflicting": 239, "insufficient": 75},
     ],
     "rating_distribution": [
         {"product": "商品 A", "r1": 10, "r2": 3, "r3": 5, "r4": 40, "r5": 100, "none": 0},
@@ -94,7 +98,7 @@ def test_stats_value_that_differs_from_the_tool_result_is_rejected():
                 text="该商品匹配 999 条。",
                 stat_key="signal_totals",
                 product="商品 A",
-                metric="matched",
+                metric="sample_size",
                 value=999,
             ),
         ),
@@ -133,7 +137,7 @@ def test_alias_inside_free_text_is_rejected():
 
 
 def test_summary_number_must_trace_to_a_tool_result():
-    draft = _draft(supported="这批 766 条里有 75 条判不出方向。")
+    draft = _draft(supported="这批 900 条里有 77 条判不出方向。")
 
     assert "NUMBER_NOT_TRACEABLE" in validate_chat_answer(draft, MATERIALS, STATS_ROWS)
 
@@ -188,7 +192,7 @@ def test_stats_text_number_must_come_from_that_row():
                 text="该商品匹配 999 条。",
                 stat_key="signal_totals",
                 product="商品 A",
-                metric="matched",
+                metric="sample_size",
                 value=42,
             ),
         ),
@@ -198,10 +202,46 @@ def test_stats_text_number_must_come_from_that_row():
 
 
 def test_card_matched_count_is_traceable_when_supplied_as_seen_material():
-    draft = _draft(supported="这张卡有 766 条匹配评论。")
+    draft = _draft(supported="这张卡有 9,999 条匹配评论。")
 
     assert "NUMBER_NOT_TRACEABLE" in validate_chat_answer(draft, MATERIALS, STATS_ROWS)
-    assert validate_chat_answer(draft, MATERIALS, STATS_ROWS, {"766"}) == ()
+    assert validate_chat_answer(draft, MATERIALS, STATS_ROWS, {"9999"}) == ()
+
+
+def test_population_and_sample_metrics_cannot_be_crossed():
+    # A population total cited under the sample stat is refused outright, so a
+    # sentence can never pair "766 matched reviews" with a sample count.
+    draft = _draft(
+        review_points=(),
+        stats_points=(
+            ChatStatsPoint(
+                text="全部匹配评论里反对 0 条。",
+                stat_key="signal_totals",
+                product="商品 A",
+                metric="matched_total",
+                value=766,
+            ),
+        ),
+    )
+
+    assert "UNKNOWN_STAT_REF" in validate_chat_answer(draft, MATERIALS, STATS_ROWS)
+
+
+def test_population_totals_are_citable_with_their_own_denominator():
+    draft = _draft(
+        review_points=(),
+        stats_points=(
+            ChatStatsPoint(
+                text="全部 766 条匹配评论里,反对 166 条。",
+                stat_key="full_population_totals",
+                product="商品 A",
+                metric="opposing",
+                value=166,
+            ),
+        ),
+    )
+
+    assert validate_chat_answer(draft, MATERIALS, STATS_ROWS) == ()
 
 
 def test_card_payload_namespaces_ids_and_flattens_text():

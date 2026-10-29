@@ -8,11 +8,11 @@
     "safety_failure": 6,
     "triage": 4
   },
-  "config_sha256": "8c6ab5ef51680795b660e92021ed5a5a656b2ccbcd0c9b690313a06a38ddcd22",
-  "contract_sha256": "180d1e8667c4ae0f7e459dca1bee658e7be7b03eafaea48c0da12ea62d44934e",
-  "corpus_sha256": "37fe1c12ad65caed9b6509753e6162cdc16c73d32641292090004b82b49aafb0",
+  "config_sha256": "2278a2ebe72cf86c68b6edd50a9a490f73de8834ece76150520e5bfc9fda8d5b",
+  "contract_sha256": "b93053ce55ab7d47e865de53fe02cc076f8a1eeaa1f19487ec3c41a5f6f647fa",
+  "corpus_sha256": "d2a6f9e1cfe174f7eb26baab7fb63ebfb3744c3dff0d22c0f3ff2fa65f36c90b",
   "dataset_snapshot_id": "44eface81cccdceb36c3fd61f93736267e63b84ba63902fac026659540518846",
-  "estimated_cost_usd": 0.0036002512,
+  "estimated_cost_usd": 0.0042871808,
   "gates": {
     "adversarial_containment": true,
     "all_blocking_gates_passed": true,
@@ -30,7 +30,7 @@
     "workflow_and_status": true
   },
   "git_dirty": false,
-  "git_revision": "0d55ce284bac957d6eeff7040a53bc80e5afbebc",
+  "git_revision": "66ec83c87d11e8a2afc8fc57063451e75ee2047c",
   "limitations": [
     "Silver expectations are derived from deterministic local evidence.",
     "This bounded run does not establish production traffic reliability.",
@@ -44,20 +44,20 @@
     "output": 0.28
   },
   "provider_fingerprints": {
-    "a26a7955944dc5c60445bff77fac9c8e": 56
+    "bc19ba97cbe016479903222bb1578db6": 56
   },
   "provider_models": {
-    "deepseek-v4-flash": 56
+    "deepseek-flash": 56
   },
   "repetition_count": 2,
   "run_count": 30,
   "schema_version": "p6-live-agent-summary-v1",
-  "selection_sha256": "ed75969f20a5f52767cceffa0270f787bd7caa06dec37926b3ce105100c775bb",
-  "source_sha256": "fafe752c0ade85f33328ce12264be144b3271841dd36d6cd1eb578b11ba3a903",
+  "selection_sha256": "86988390d5e5dd95e5fd0007865daa843d11103b1a271c1497edf752568cc79d",
+  "source_sha256": "541b011856418656d51041db30f61ff332b18945745f1460bc12dad6f5f2d0dc",
   "usage": {
-    "cache_hit_input_tokens": 59904,
-    "cache_miss_input_tokens": 3690,
-    "input_tokens": 63594,
-    "output_tokens": 10414
+    "cache_hit_input_tokens": 52736,
+    "cache_miss_input_tokens": 10208,
+    "input_tokens": 62944,
+    "output_tokens": 9680
   }
 }

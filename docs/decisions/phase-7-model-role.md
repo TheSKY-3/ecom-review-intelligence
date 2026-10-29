@@ -2,7 +2,7 @@
 
 - Date: 2026-10-22 (decided and implemented the same day)
 - Decision owner: project owner (rejected the sufficiency gate after two falsified experiments)
-- Supersedes: `docs/superpowers/specs/2026-10-22-model-sufficiency-gate-design.md` (never implemented)
+- Supersedes: the 2026-10-22 sufficiency-gate design note (never implemented)
 - Implemented in: `src/ecom_review_intelligence/agent_insight.py`, `workbench_service.run_insight`, `POST /api/v1/insights`
 
 ## Question

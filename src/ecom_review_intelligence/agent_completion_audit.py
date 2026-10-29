@@ -201,7 +201,7 @@ def validate_clean_tracked_worktree(root: Path) -> None:
         ["git", "-C", str(Path(root).resolve()), "status", "--porcelain", "--untracked-files=no"],
         capture_output=True,
         check=True,
-        text=True,
+        encoding="utf-8",
     ).stdout
     if status.strip():
         raise CompletionAuditError("The tracked worktree is not clean.")
@@ -475,7 +475,7 @@ def _git_lines(root: Path, arguments: list[str], *, separator: str) -> list[str]
         ["git", "-C", str(root), *arguments],
         capture_output=True,
         check=True,
-        text=True,
+        encoding="utf-8",
     )
     return [item for item in result.stdout.split(separator) if item]
 

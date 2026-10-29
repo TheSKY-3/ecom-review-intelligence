@@ -20,6 +20,7 @@ from ecom_review_intelligence.agent_chat import (
     MAX_TOOL_ROUNDS,
     ChatAnswerDraft,
     CreateRunArgs,
+    ExportReviewsArgs,
     QueryStatsArgs,
     ReadCardArgs,
 )
@@ -770,10 +771,29 @@ class DeepSeekChatGateway:
                 "function": {
                     "name": "query_run_stats",
                     "description": (
-                        "Query one predefined aggregate statistic over this run's "
-                        "matched reviews."
+                        "Query one predefined aggregate statistic. signal_totals "
+                        "counts only the few reviews shown in the evidence cards "
+                        "(denominator: sample_size); full_population_totals applies "
+                        "the same word list to every matched review (denominator: "
+                        "matched_total); rating_distribution is a rating histogram. "
+                        "They answer different questions and must not be mixed."
                     ),
                     "parameters": QueryStatsArgs.model_json_schema(),
+                },
+            },
+            {
+                "type": "function",
+                "function": {
+                    "name": "export_reviews",
+                    "description": (
+                        "Write every matched review of one product in the current "
+                        "aspect to a local CSV for human annotation, marking which "
+                        "rows fed the conclusion. Available at most once per run; "
+                        "call it only when the operator asks for the reviews, an "
+                        "export, a table, or a file. Numbers stay in the tool "
+                        "result; never restate the local file path in the answer."
+                    ),
+                    "parameters": ExportReviewsArgs.model_json_schema(),
                 },
             },
             {

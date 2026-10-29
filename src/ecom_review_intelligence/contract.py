@@ -29,7 +29,7 @@ _ASPECT_TERMS: dict[str, tuple[str, ...]] = {
     "cleaning_maintenance": ("clean", "cleaning", "maintenance", "descale", "sanitize"),
     "capacity_speed": ("fast", "quick", "slow", "capacity", "batch", "minutes"),
     "ease_setup": ("easy", "simple", "setup", "install", "instructions"),
-    "leakage": ("leak", "leaking", "drip", "water"),
+    "leakage": ("leak", "leaking", "drip"),
     "size_portability": ("small", "large", "compact", "counter", "portable", "size"),
 }
 _POLARITY_TERMS: dict[str, tuple[str, ...]] = {

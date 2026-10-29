@@ -2,6 +2,7 @@
 
 import json
 import sqlite3
+from pathlib import Path
 from uuid import UUID
 
 from fastapi.testclient import TestClient
@@ -135,6 +136,8 @@ def _service(tmp_path, steps=(), uuid_factory=None, user_chat_gateway_factory=No
         product_ids_by_code={"frostline": product_id},
         chat_gateway_factory=lambda: gateway,
         user_chat_gateway_factory=user_chat_gateway_factory,
+        export_dir=tmp_path / "exports",
+        project_root=tmp_path,
         uuid_factory=uuid_factory
         or (lambda: UUID("00000000-0000-4000-8000-000000000001")),
     )
@@ -275,7 +278,7 @@ def test_stats_tool_feeds_a_checkable_answer(tmp_path):
     run_token = _create_run(client)
     matched = service.get_run(run_token).product_summaries[0].matched_count
     gateway.steps = [
-        ("tool", "query_run_stats", json.dumps({"stat_key": "signal_totals"})),
+        ("tool", "query_run_stats", json.dumps({"stat_key": "full_population_totals"})),
         (
             "submit",
             _draft(
@@ -283,9 +286,9 @@ def test_stats_tool_feeds_a_checkable_answer(tmp_path):
                 stats_points=(
                     {
                         "text": f"该商品共匹配 {matched} 条评论。",
-                        "stat_key": "signal_totals",
+                        "stat_key": "full_population_totals",
                         "product": PRODUCT_LABEL,
-                        "metric": "matched",
+                        "metric": "matched_total",
                         "value": matched,
                     },
                 ),
@@ -301,8 +304,9 @@ def test_stats_tool_feeds_a_checkable_answer(tmp_path):
     assert response.status_code == 200
     assert body["status"] == "READY"
     assert body["stats_points"][0]["value"] == matched
-    assert body["steps"][0]["title"] == "查询统计 · signal_totals"
+    assert body["steps"][0]["title"] == "查询统计 · full_population_totals"
     assert body["steps"][0]["detail"][0] == "1 个商品"
+    assert "匹配评论中" not in " ".join(body["steps"][0]["detail"])
 
 
 def test_rating_distribution_stat_matches_the_reviews(tmp_path):
@@ -604,3 +608,233 @@ def test_chat_create_run_turn_still_counts_toward_the_session_limit(tmp_path):
     second = client.post("/api/v1/chat", json={"run_token": new_token, "message": "再问"})
 
     assert second.json()["reason"] == "CHAT_SESSION_LIMIT"
+
+
+def test_direction_stats_never_mix_sample_and_population_denominators(tmp_path):
+    service, _gateway = _service(tmp_path)
+    client = TestClient(create_workbench_app(service=service))
+    run_token = _create_run(client)
+    session = service._chat_session_for(run_token)
+    matched = service.get_run(run_token).product_summaries[0].matched_count
+
+    sample, _, _, _ = service._chat_query_stats(
+        session, json.dumps({"stat_key": "signal_totals"})
+    )
+    population, _, _, _ = service._chat_query_stats(
+        session, json.dumps({"stat_key": "full_population_totals"})
+    )
+
+    sample_row = sample["rows"][0]
+    population_row = population["rows"][0]
+    assert "matched_total" not in sample_row
+    assert sample_row["sample_size"] == sum(
+        sample_row[key] for key in ("supporting", "opposing", "conflicting", "insufficient")
+    )
+    assert "sample_size" not in population_row
+    assert population_row["matched_total"] == matched
+    assert population_row["matched_total"] == sum(
+        population_row[key]
+        for key in ("supporting", "opposing", "conflicting", "insufficient")
+    )
+
+def test_export_tool_writes_a_local_csv_and_keeps_the_path_off_the_model(tmp_path):
+    service, _gateway = _service(tmp_path)
+    client = TestClient(create_workbench_app(service=service))
+    run_token = _create_run(client)
+    session = service._chat_session_for(run_token)
+
+    payload, title, detail, status = service._chat_export_reviews(
+        session, json.dumps({"product_number": 1})
+    )
+
+    assert status == "ok", detail
+    assert title == "导出评论"
+    path = Path(session.export_path or "")
+    assert path.is_absolute() and path.is_dir()
+    header = (path / "reviews.csv").read_text(encoding="utf-8-sig").splitlines()[0]
+    assert "参与本次判断" in header
+    assert payload["exported"] == 3
+    assert any(item.startswith("路径: ") for item in detail)
+    assert str(path) not in json.dumps(payload, ensure_ascii=False)
+
+
+def test_export_budget_is_one_file_per_run(tmp_path):
+    service, _gateway = _service(tmp_path)
+    client = TestClient(create_workbench_app(service=service))
+    run_token = _create_run(client)
+    session = service._chat_session_for(run_token)
+
+    first, _title, _detail, first_status = service._chat_export_reviews(
+        session, json.dumps({"product_number": 1})
+    )
+    payload, _title, detail, status = service._chat_export_reviews(
+        session, json.dumps({"product_number": 1})
+    )
+
+    assert first_status == "ok"
+    assert status == "error"
+    assert payload["error"] == "EXPORT_ALREADY_DONE"
+    assert "已经导出过一次" in detail[0]
+    assert len(list((tmp_path / "exports").iterdir())) == 1
+    assert payload["path"] == session.export_path
+    assert first["exported"] == 3
+
+
+def test_export_totals_are_queryable_only_after_the_export(tmp_path):
+    service, _gateway = _service(tmp_path)
+    client = TestClient(create_workbench_app(service=service))
+    run_token = _create_run(client)
+    session = service._chat_session_for(run_token)
+
+    before, _title, _before_detail, before_status = service._chat_query_stats(
+        session, json.dumps({"stat_key": "export_totals"})
+    )
+    assert before_status == "error" and before["error"] == "NO_EXPORT_YET"
+
+    service._chat_export_reviews(session, json.dumps({"product_number": 1}))
+    rows, _title, _detail, status = service._chat_query_stats(
+        session, json.dumps({"stat_key": "export_totals"})
+    )
+
+    assert status == "ok"
+    assert rows["rows"][0]["exported"] == 3
+    assert rows["rows"][0]["matched_total"] == 3
+
+
+def test_chat_turn_surfaces_the_export_path_beside_the_answer(tmp_path):
+    service, gateway = _service(tmp_path)
+    client = TestClient(create_workbench_app(service=service))
+    run_token = _create_run(client)
+    gateway.steps = [
+        ("tool", "export_reviews", json.dumps({"product_number": 1})),
+        (
+            "submit",
+            _draft(
+                review_points=(),
+                stats_points=(
+                    {
+                        "text": "已导出 3 条评论。",
+                        "stat_key": "export_totals",
+                        "product": PRODUCT_LABEL,
+                        "metric": "exported",
+                        "value": 3,
+                    },
+                ),
+                not_supported="导出的表需要人工逐条核对,不能直接当结论。",
+            ),
+        ),
+    ]
+
+    body = client.post(
+        "/api/v1/chat",
+        json={"run_token": run_token, "message": "把评论导出来,我要人工标注"},
+    ).json()
+
+    assert body["status"] == "READY", body
+    assert body["export_rows"] == 3
+    assert body["export_path"].startswith("exports/")
+    assert ":" not in body["export_path"]
+    assert (tmp_path / body["export_path"] / "reviews.csv").is_file()
+    assert body["steps"][0]["tool"] == "export_reviews"
+    assert body["steps"][0]["status"] == "ok"
+    assert body["stats_points"][0]["stat_key"] == "export_totals"
+
+def test_switching_runs_by_chat_resets_the_export_budget(tmp_path):
+    from ecom_review_intelligence.workbench_contracts import WorkbenchRunRequest
+
+    service, _gateway = _service(tmp_path)
+    client = TestClient(create_workbench_app(service=service))
+    run_token = _create_run(client)
+    session = service._chat_session_for(run_token)
+    service._chat_export_reviews(session, json.dumps({"product_number": 1}))
+    assert session.exports == 1
+
+    request = WorkbenchRunRequest(
+        workflow="diagnosis",
+        product_codes=("frostline",),
+        aspect="noise",
+        question="Which noise signals should operations verify first?",
+    )
+    new_run = service.create_run(request)
+    service._switch_chat_session(session, new_run)
+
+    assert session.exports == 0
+    assert session.export_path is None
+    assert session.export_rows == 0
+    payload, _title, _detail, status = service._chat_export_reviews(
+        session, json.dumps({"product_number": 1})
+    )
+    assert status == "ok", payload
+
+def test_card_rows_chat_rows_and_export_mark_the_same_sample(tmp_path):
+    import sqlite3 as _sqlite3
+
+    from ecom_review_intelligence.engine import compute_evidence_id, initialize_store
+
+    store = tmp_path / "six.sqlite"
+    checkpoint = tmp_path / "checkpoint.sqlite"
+    snapshot, contract = "a" * 64, "b" * 64
+    initialize_store(
+        store,
+        snapshot_id=snapshot,
+        contract_sha256=contract,
+        aspect_terms={"noise": ("noise",)},
+        polarity_terms={"supporting": ("quiet",), "opposing": ("loud",)},
+    )
+    product_id = "LOCAL_PRIVATE_PRODUCT"
+    rows = (
+        ("noise quiet one", 5.0),
+        ("noise quiet two", 5.0),
+        ("noise quiet three", 5.0),
+        ("noise quiet four", 5.0),
+        ("noise quiet five", 5.0),
+        ("noise loud six", 1.0),
+        ("noise loud seven", 1.0),
+    )
+    with _sqlite3.connect(store) as connection:
+        connection.execute(
+            "INSERT INTO products(parent_asin,title) VALUES (?,?)", (product_id, PRODUCT_LABEL)
+        )
+        for line, (text, rating) in enumerate(rows, start=1):
+            connection.execute(
+                "INSERT INTO reviews(evidence_id,source_line,parent_asin,text,rating,timestamp,"
+                "verified_purchase,helpful_vote) VALUES (?,?,?,?,?,?,?,?)",
+                (compute_evidence_id(snapshot, line), line, product_id, text, rating, line, 1, 0),
+            )
+    service = P6BackedWorkbenchService(
+        store_path=store,
+        checkpoint_path=checkpoint,
+        trace_path=tmp_path / "traces.jsonl",
+        config={
+            "dataset_snapshot_id": snapshot,
+            "contract_sha256": contract,
+            "retrieval_limit_per_aspect": 5,
+            "model": "deepseek-v4-flash",
+            "base_url": "https://api.deepseek.com",
+            "config_sha256": "c" * 64,
+        },
+        product_ids_by_code={"frostline": product_id},
+        export_dir=tmp_path / "exports",
+        project_root=tmp_path,
+    )
+    client = TestClient(create_workbench_app(service=service))
+    run_token = _create_run(client)
+    run = service.get_run(run_token)
+    card_alias = run.evidence[0].evidence_alias
+
+    card_texts = sorted(row.text for row in service.get_evidence_rows(run_token, card_alias).rows)
+    _aspect, _label, chat_reviews, _matched = service._insight_inputs(run_token, card_alias)
+    chat_texts = sorted(text for _id, text in chat_reviews)
+    session = service._chat_session_for(run_token)
+    service._chat_export_reviews(session, json.dumps({"product_number": 1}))
+    import csv
+
+    with open(session.export_path + "/reviews.csv", encoding="utf-8-sig", newline="") as handle:
+        exported = [
+            row["评论原文"] for row in csv.DictReader(handle) if row["参与本次判断"] == "是"
+        ]
+
+    assert len(card_texts) == 5
+    assert any("loud" in text for text in card_texts), card_texts
+    assert chat_texts == card_texts
+    assert sorted(exported) == card_texts

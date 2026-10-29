@@ -1,0 +1,69 @@
+{
+ "schema_version": "triage-comparison-v1",
+ "generated_at": "2026-09-26T14:22:54.647651+00:00",
+ "dataset_snapshot_id": "44eface81cccdceb36c3fd61f93736267e63b84ba63902fac026659540518846",
+ "contract_sha256": "b93053ce55ab7d47e865de53fe02cc076f8a1eeaa1f19487ec3c41a5f6f647fa",
+ "mode": "live",
+ "model": "deepseek-v4-flash",
+ "model_calls": 8,
+ "tokens": {
+  "input": 4311,
+  "output": 828
+ },
+ "labeled_by": "qwen3.8flash@Qoder (advisory reference layer)",
+ "min_direction": 5,
+ "aspects_compared": [
+  "capacity_speed",
+  "cleaning_maintenance",
+  "ease_setup",
+  "ice_quality",
+  "leakage",
+  "noise",
+  "reliability",
+  "size_portability"
+ ],
+ "aspects_skipped": [],
+ "tau_aggregate": {
+  "model_vs_reference": 0.238,
+  "deterministic_vs_reference": 0.186,
+  "model_vs_deterministic": 0.931
+ },
+ "tau_per_aspect": {
+  "model_vs_reference": {
+   "capacity_speed": 0.333,
+   "cleaning_maintenance": 1.0,
+   "ease_setup": 1.0,
+   "ice_quality": -1.0,
+   "noise": 0.333,
+   "reliability": -1.0,
+   "size_portability": 1.0
+  },
+  "deterministic_vs_reference": {
+   "capacity_speed": 0.333,
+   "cleaning_maintenance": 0.816,
+   "ease_setup": 1.0,
+   "ice_quality": -1.0,
+   "noise": 0.333,
+   "reliability": -1.0,
+   "size_portability": 0.816
+  },
+  "model_vs_deterministic": {
+   "capacity_speed": 1.0,
+   "cleaning_maintenance": 0.816,
+   "ease_setup": 1.0,
+   "ice_quality": 1.0,
+   "leakage": 0.816,
+   "noise": 1.0,
+   "reliability": 1.0,
+   "size_portability": 0.816
+  }
+ },
+ "limitations": [
+  "Silver-vs-advisory comparison: neither side is a human-adjudicated ground truth.",
+  "The reference ranking reflects the blind reviews the lexicon cannot judge; the deterministic counts come from the reviews it can. The two sides cover disjoint review subsets.",
+  "The deterministic ranking uses the documented experimental rule (opposing + conflicting, tie by matched_count), not the shipped workbench triage ordering.",
+  "Only three controlled products are compared per aspect, so each tau rests on at most three item pairs; treat values as directional, not precise.",
+  "Model rankings come from one tool-call per aspect at temperature 0 with the config-pinned model (thinking disabled); no sampling variance is measured.",
+  "Engineering exploration; not a phase gate and not a business-impact claim."
+ ]
+}

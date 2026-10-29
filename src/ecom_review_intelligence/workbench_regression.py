@@ -42,6 +42,7 @@ _WORKBENCH_SOURCE_PATHS = (
     "src/ecom_review_intelligence/templates/workbench.html",
     "src/ecom_review_intelligence/static/workbench.css",
     "src/ecom_review_intelligence/static/workbench.js",
+    "src/ecom_review_intelligence/static/workbench-theme.js",
     "tests/test_workbench_cli.py",
     "tests/test_workbench_local.py",
     "tests/test_workbench_web.py",

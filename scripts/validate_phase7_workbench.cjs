@@ -62,6 +62,7 @@ function sourceIdentity() {
     "src/ecom_review_intelligence/templates/workbench.html",
     "src/ecom_review_intelligence/static/workbench.css",
     "src/ecom_review_intelligence/static/workbench.js",
+    "src/ecom_review_intelligence/static/workbench-theme.js",
     "tests/test_workbench_cli.py",
     "tests/test_workbench_local.py",
     "tests/test_workbench_web.py",
@@ -291,9 +292,11 @@ async function run() {
 }
 
 run().catch((error) => {
+  const reason = String(error && error.message ? error.message : error).slice(0, 400);
   const failed = {
     schema_version: "p7-browser-validation-v1",
     status: "FAILED",
+    reason,
   };
   try {
     invalidateArtifacts();

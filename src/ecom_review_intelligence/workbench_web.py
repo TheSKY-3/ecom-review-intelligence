@@ -21,6 +21,8 @@ from ecom_review_intelligence.workbench_contracts import (
     ChatRequest,
     ChatTurnView,
     EvidenceDetail,
+    ExportRequest,
+    ExportView,
     InsightRequest,
     InsightView,
     VerdictList,
@@ -34,6 +36,9 @@ from ecom_review_intelligence.workbench_service import (
     SyntheticWorkbenchService,
     WorkbenchChatUnavailable,
     WorkbenchEvidenceUnavailable,
+    WorkbenchExportExists,
+    WorkbenchExportFailed,
+    WorkbenchExportUnavailable,
     WorkbenchInputError,
     WorkbenchInsightUnavailable,
     WorkbenchRunConflict,
@@ -269,6 +274,37 @@ def create_workbench_app(
             "The chat assistant is unavailable for this run or deployment.",
         )
 
+    @app.exception_handler(WorkbenchExportUnavailable)
+    async def export_unavailable(
+        request: Request, error: WorkbenchExportUnavailable
+    ) -> JSONResponse:
+        del request, error
+        return _error(
+            404,
+            "EXPORT_UNAVAILABLE",
+            "The review export is only available for completed controlled local runs.",
+        )
+
+    @app.exception_handler(WorkbenchExportExists)
+    async def export_exists(request: Request, error: WorkbenchExportExists) -> JSONResponse:
+        del request
+        return JSONResponse(
+            status_code=409,
+            content={
+                "error": {
+                    "code": "EXPORT_ALREADY_DONE",
+                    "message": "This run already exported once.",
+                },
+                "folder": error.folder,
+                "exported": error.exported,
+            },
+        )
+
+    @app.exception_handler(WorkbenchExportFailed)
+    async def export_failed(request: Request, error: WorkbenchExportFailed) -> JSONResponse:
+        del request, error
+        return _error(500, "EXPORT_FAILED", "The review export could not be written.")
+
     @app.exception_handler(Exception)
     async def unknown_error(request: Request, error: Exception) -> JSONResponse:
         del request, error
@@ -342,6 +378,20 @@ def create_workbench_app(
         # that exist for the aggregate public surface.
         assert_response_keys_safe(detail.model_dump(mode="json"))
         return detail
+
+    @app.post("/api/v1/runs/{run_token}/exports", status_code=201, response_model=ExportView)
+    def export_reviews(run_token: str, request: ExportRequest) -> ExportView:
+        """Write this run's matched reviews for one product; never calls a model.
+
+        Deliberately key-free: the export reads only the local evidence store, so
+        the result page can offer it before any model key is configured.
+        """
+
+        if backend.mode != "local" or not hasattr(backend, "export_run_reviews"):
+            raise WorkbenchExportUnavailable()
+        view = backend.export_run_reviews(run_token, request.product_code)
+        assert_public_workbench_safe(view.model_dump(mode="json"))
+        return view
 
     @app.post("/api/v1/insights", response_model=InsightView)
     def create_insight(request: InsightRequest, http_request: Request) -> InsightView:

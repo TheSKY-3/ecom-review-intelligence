@@ -18,6 +18,7 @@ from pydantic import ValidationError
 from ecom_review_intelligence.agent_chat import (
     MAX_CHAT_TURNS,
     CreateRunArgs,
+    ExportReviewsArgs,
     QueryStatsArgs,
     ReadCardArgs,
     build_card_payload,
@@ -56,10 +57,10 @@ from ecom_review_intelligence.agent_tools import (
 from ecom_review_intelligence.agent_trace import append_local_trace, serialize_public_trace
 from ecom_review_intelligence.engine import (
     _polarity,
-    query_aspect,
     query_stratified_aspect,
     verify_citation,
 )
+from ecom_review_intelligence.label_backfill import POLARITIES
 from ecom_review_intelligence.model_gateway import (
     ChatGateway,
     ChatToolStep,
@@ -71,6 +72,11 @@ from ecom_review_intelligence.model_gateway import (
     default_model,
     model_options,
 )
+from ecom_review_intelligence.review_export import (
+    BUCKET_LABELS,
+    ExportError,
+    export_product_aspect,
+)
 from ecom_review_intelligence.workbench_contracts import (
     ChatPointView,
     ChatStatsPointView,
@@ -81,6 +87,7 @@ from ecom_review_intelligence.workbench_contracts import (
     EvidenceDetail,
     EvidenceRowView,
     EvidenceView,
+    ExportView,
     InsightPoint,
     InsightRejected,
     InsightView,
@@ -120,6 +127,23 @@ class WorkbenchInsightUnavailable(LookupError):
 
 class WorkbenchChatUnavailable(WorkbenchInsightUnavailable):
     """The constrained chat assistant is unavailable for this run or deployment."""
+
+
+class WorkbenchExportUnavailable(LookupError):
+    """The model-free review export is unavailable for this run or deployment."""
+
+
+class WorkbenchExportExists(RuntimeError):
+    """This run already wrote its single export file; the folder is public-safe."""
+
+    def __init__(self, folder: str, exported: int) -> None:
+        super().__init__("This run already exported once.")
+        self.folder = folder
+        self.exported = exported
+
+
+class WorkbenchExportFailed(RuntimeError):
+    """Writing the CSV failed after the run and the product were validated."""
 
 
 class VerdictStore:
@@ -245,6 +269,9 @@ class _ChatSession:
     read_cache: dict[int, dict[str, object]] = field(default_factory=dict)
     history: list[dict[str, str]] = field(default_factory=list)
     turns: int = 0
+    exports: int = 0
+    export_path: str | None = None
+    export_rows: int = 0
 
 
 class SyntheticWorkbenchService:
@@ -530,6 +557,8 @@ class P6BackedWorkbenchService(SyntheticWorkbenchService):
         user_insight_gateway_factory: Callable[[str, str], InsightGateway | None] | None = None,
         chat_gateway_factory: Callable[[], ChatGateway | None] | None = None,
         user_chat_gateway_factory: Callable[[str, str], ChatGateway | None] | None = None,
+        export_dir: Path | None = None,
+        project_root: Path | None = None,
         uuid_factory: Callable[[], UUID | str] = uuid4,
     ) -> None:
         super().__init__(uuid_factory=uuid_factory)
@@ -567,6 +596,8 @@ class P6BackedWorkbenchService(SyntheticWorkbenchService):
         self._chat_gateway: ChatGateway | None = None
         self._chat_gateway_resolved = False
         self._chat_sessions: dict[str, _ChatSession] = {}
+        self._export_dir = Path(export_dir) if export_dir is not None else Path("tmp/exports")
+        self._project_root = Path(project_root) if project_root is not None else Path.cwd()
         self._evidence_index: dict[str, tuple[tuple[str, str, str], ...]] = {}
         self._verdict_store = VerdictStore(
             Path(verdict_path)
@@ -829,7 +860,7 @@ class P6BackedWorkbenchService(SyntheticWorkbenchService):
             }[request.workflow],
             summary=(
                 f"在这批冻结评论中,所选商品的“{aspect_label}”维度共匹配 {total_matched} 条;"
-                f"本次按数据顺序取回 {evidence_count} 条作为核查样本。"
+                f"本次按星级分层取回 {evidence_count} 条作为抽样凭证(可逐字核对,不是统计结论)。"
                 f"机器按词表判定方向:支持 {totals['supporting']} 条、反对 {totals['opposing']} 条、"
                 f"冲突 {totals['conflicting']} 条、信息不足 {totals['insufficient']} 条。"
             ),
@@ -869,7 +900,7 @@ class P6BackedWorkbenchService(SyntheticWorkbenchService):
             raise WorkbenchEvidenceUnavailable()
         _alias, product_id, aspect = match
         limit = int(self._config["retrieval_limit_per_aspect"])
-        result = query_aspect(self._store_path, (product_id,), aspect, limit=limit)
+        result = query_stratified_aspect(self._store_path, (product_id,), aspect, limit=limit)
         code = next(
             (code for code, pid in self._product_ids_by_code.items() if pid == product_id),
             product_id,
@@ -1162,6 +1193,7 @@ class P6BackedWorkbenchService(SyntheticWorkbenchService):
                 status="UNAVAILABLE",
                 reason="MODEL_NOT_CONFIGURED",
                 session_turns=session.turns,
+                **self._export_view(session),
             )
         token_before = session.run_token
         try:
@@ -1177,6 +1209,7 @@ class P6BackedWorkbenchService(SyntheticWorkbenchService):
                 model_calls=1,
                 session_turns=session.turns,
                 created_run_token=self._created_token(token_before, session),
+                **self._export_view(session),
             )
         created_token = self._created_token(token_before, session)
         check = validate_chat_answer(
@@ -1194,6 +1227,7 @@ class P6BackedWorkbenchService(SyntheticWorkbenchService):
                 model_calls=outcome.model_calls,
                 session_turns=session.turns,
                 created_run_token=created_token,
+                **self._export_view(session),
             )
         session.turns += 1
         session.history.append({"role": "user", "content": message})
@@ -1227,6 +1261,7 @@ class P6BackedWorkbenchService(SyntheticWorkbenchService):
             model_calls=outcome.model_calls,
             session_turns=session.turns,
             created_run_token=created_token,
+            **self._export_view(session),
         )
 
     @staticmethod
@@ -1309,6 +1344,8 @@ class P6BackedWorkbenchService(SyntheticWorkbenchService):
                     return self._chat_query_stats(session, arguments)
                 if name == "create_run":
                     return self._chat_create_run(session, arguments)
+                if name == "export_reviews":
+                    return self._chat_export_reviews(session, arguments)
                 return (
                     {"error": "UNKNOWN_TOOL"},
                     f"拒绝未知工具: {name}",
@@ -1426,6 +1463,9 @@ class P6BackedWorkbenchService(SyntheticWorkbenchService):
         session.stats_rows = {}
         session.card_numbers = set()
         session.read_cache = {}
+        session.exports = 0
+        session.export_path = None
+        session.export_rows = 0
         self._chat_sessions[session.run_token] = session
 
     def _chat_read_card(
@@ -1478,12 +1518,21 @@ class P6BackedWorkbenchService(SyntheticWorkbenchService):
         key = args.stat_key
         rows = session.stats_rows.get(key)
         if rows is None:
+            if key == "export_totals":
+                return (
+                    {"error": "NO_EXPORT_YET"},
+                    f"查询统计 · {key}",
+                    ("本次运行还没有导出过",),
+                    "error",
+                )
             if key == "signal_totals":
                 run = self.get_run(session.run_token)
                 rows = [
                     {
                         "product": self._product_view(summary.product_code).label,
-                        "matched": summary.matched_count,
+                        "sample_size": sum(
+                            int(value) for value in summary.signal_totals.values()
+                        ),
                         "supporting": summary.signal_totals.get("supporting", 0),
                         "opposing": summary.signal_totals.get("opposing", 0),
                         "conflicting": summary.signal_totals.get("conflicting", 0),
@@ -1491,6 +1540,20 @@ class P6BackedWorkbenchService(SyntheticWorkbenchService):
                     }
                     for summary in run.product_summaries
                 ]
+            elif key == "full_population_totals":
+                rows = []
+                for _code, label, product_id in session.products:
+                    totals = self._lexicon_totals([product_id], session.aspect)
+                    rows.append(
+                        {
+                            "product": label,
+                            "matched_total": totals.matched_count,
+                            "supporting": totals.supporting,
+                            "opposing": totals.opposing,
+                            "conflicting": totals.conflicting,
+                            "insufficient": totals.insufficient,
+                        }
+                    )
             else:
                 rows = [
                     {
@@ -1507,6 +1570,204 @@ class P6BackedWorkbenchService(SyntheticWorkbenchService):
             (f"{len(rows)} 个商品", "指标: " + " / ".join(str(name) for name in columns)),
             "ok",
         )
+
+    def _chat_export_reviews(
+        self, session: _ChatSession, arguments: str
+    ) -> tuple[dict[str, object], str, tuple[str, ...], str]:
+        """Write this run's matched reviews to a local CSV for human annotation.
+
+        The export has its own budget: one file per run, only after a diagnosis
+        exists. It never consumes the evidence-tool budget, and the review text
+        stays inside the local exports folder.
+        """
+
+        title = "导出评论"
+        try:
+            args = ExportReviewsArgs.model_validate_json(arguments)
+        except ValidationError as error:
+            return (
+                {"error": "INVALID_EXPORT_SHAPE"},
+                title,
+                (f"参数不合法: {error.errors()[0]['msg']}",),
+                "error",
+            )
+        by_number = {number: code for number, code, _label in self._product_catalog()}
+        code = by_number.get(args.product_number)
+        if code is None:
+            valid = ",".join(str(number) for number in by_number)
+            return (
+                {"error": "PRODUCT_NOT_FOUND", "valid_products": valid},
+                title,
+                (f"商品编号 {args.product_number} 不存在（可选: {valid}）",),
+                "error",
+            )
+        product = next((item for item in session.products if item[0] == code), None)
+        if product is None:
+            valid = ",".join(
+                str(number) for number, item_code, _label in self._product_catalog()
+                if any(item[0] == item_code for item in session.products)
+            )
+            return (
+                {"error": "PRODUCT_NOT_IN_RUN", "valid_products": valid},
+                title,
+                (f"该商品不在本次运行范围内（可选: {valid}）",),
+                "error",
+            )
+        if not session.cards:
+            return (
+                {"error": "NO_DIAGNOSIS"},
+                title,
+                ("本次运行还没有证据卡，先跑完诊断再导出",),
+                "error",
+            )
+        if session.exports >= 1:
+            return (
+                {"error": "EXPORT_ALREADY_DONE", "path": session.export_path or ""},
+                title,
+                ("本次运行已经导出过一次，不能重复导出",),
+                "error",
+            )
+        _code, label, product_id = product
+        summary = next(
+            (
+                item
+                for item in self.get_run(session.run_token).product_summaries
+                if item.product_code == code
+            ),
+            None,
+        )
+        judged = sum(int(value) for value in summary.signal_totals.values()) if summary else 0
+        participated = frozenset(
+            item.evidence_id
+            for item in query_stratified_aspect(
+                self._store_path, (product_id,), session.aspect, limit=judged
+            ).evidence
+        ) if judged else frozenset()
+        directory = self._export_directory(code, session.aspect)
+        try:
+            result = export_product_aspect(
+                self._store_path,
+                directory,
+                product_code=code,
+                product_id=product_id,
+                product_label=label,
+                aspect=session.aspect,
+                participated_ids=participated,
+                judged_limit=judged,
+            )
+        except ExportError as error:
+            return ({"error": "EXPORT_FAILED"}, title, (str(error),), "error")
+        session.exports += 1
+        session.export_path = str(result.directory)
+        session.export_rows = len(result.rows)
+        print(f"[export] {result.directory.resolve()}", flush=True)
+        session.stats_rows["export_totals"] = [
+            {
+                "product": label,
+                "exported": len(result.rows),
+                "matched_total": result.matched_total,
+                **{bucket: result.bucket_counts.get(bucket, 0) for bucket in POLARITIES},
+            }
+        ]
+        buckets = " / ".join(
+            f"{BUCKET_LABELS.get(bucket, bucket)} {result.bucket_counts.get(bucket, 0)}"
+            for bucket in POLARITIES
+        )
+        return (
+            {
+                "product": label,
+                "exported": len(result.rows),
+                "matched_total": result.matched_total,
+                "folder": result.directory.name,
+            },
+            title,
+            (
+                f"{label} · {_ASPECT_WORDING[session.aspect][0]}",
+                f"导出 {len(result.rows)} 条（匹配 {result.matched_total} 条）",
+                buckets,
+                f"路径: {self._relative_export_path(result.directory)}（相对项目根目录）",
+            ),
+            "ok",
+        )
+
+    def _relative_export_path(self, directory: Path) -> str:
+        """Public form of an export folder: relative to the project root.
+
+        Absolute machine paths are forbidden in public workbench responses, so
+        the browser only ever sees a project-relative path; the absolute one is
+        printed to the server console for the operator.
+        """
+
+        try:
+            return directory.resolve().relative_to(self._project_root.resolve()).as_posix()
+        except ValueError:
+            return directory.name
+
+    def _export_view(self, session: _ChatSession) -> dict[str, object]:
+        """Fields the chat turn reports about the run's single export."""
+
+        path = (
+            self._relative_export_path(Path(session.export_path))
+            if session.export_path
+            else None
+        )
+        return {"export_path": path, "export_rows": session.export_rows}
+
+    def export_run_reviews(self, run_token: str, product_code: str) -> ExportView:
+        """Write one run product's matched reviews as an annotation CSV.
+
+        This is the model-free path the result page uses: it never builds or calls
+        a gateway, so the button works before any key is configured. It shares the
+        chat tool's single-export budget, its folder naming, and its relative-path
+        rule; the absolute path stays on the server console.
+        """
+
+        run = self.get_run(run_token)
+        if not run.evidence:
+            raise WorkbenchExportUnavailable()
+        session = self._chat_session_for(run_token)
+        number = next(
+            (number for number, code, _label in self._product_catalog() if code == product_code),
+            None,
+        )
+        if number is None:
+            raise WorkbenchInputError("Product is outside the local catalog.")
+        payload, _title, detail, status = self._chat_export_reviews(
+            session, json.dumps({"product_number": number})
+        )
+        if status != "ok":
+            error = str(payload.get("error", ""))
+            if error == "EXPORT_ALREADY_DONE":
+                raise WorkbenchExportExists(self._export_folder(session), session.export_rows)
+            if error == "EXPORT_FAILED":
+                raise WorkbenchExportFailed(detail[0] if detail else "Export failed.")
+            raise WorkbenchInputError("The export request could not be completed.")
+        return ExportView(
+            product=str(payload["product"]),
+            exported=int(payload["exported"]),
+            matched_total=int(payload["matched_total"]),
+            folder=self._export_folder(session),
+        )
+
+    def _export_folder(self, session: _ChatSession) -> str:
+        """Public form of the run's export folder: relative, empty before an export."""
+
+        if not session.export_path:
+            return ""
+        return self._relative_export_path(Path(session.export_path))
+
+    def _export_directory(self, product_code: str, aspect: str) -> Path:
+        """Return a fresh export folder under the configured export root."""
+
+        base = self._export_dir / (
+            f"{product_code}-{aspect}-{datetime.now(tz=UTC).strftime('%Y%m%d-%H%M%S')}"
+        )
+        candidate = base
+        suffix = 2
+        while candidate.exists():
+            candidate = base.with_name(f"{base.name}-{suffix}")
+            suffix += 1
+        return candidate
 
     def _rating_distribution(self, product_id: str, aspect: str) -> dict[str, int]:
         """Whitelisted aggregate: rating histogram of one product's matched reviews."""

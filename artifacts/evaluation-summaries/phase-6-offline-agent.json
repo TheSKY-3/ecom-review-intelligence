@@ -8,9 +8,9 @@
     "safety_failure": 6,
     "triage": 5
   },
-  "config_sha256": "8c6ab5ef51680795b660e92021ed5a5a656b2ccbcd0c9b690313a06a38ddcd22",
-  "contract_sha256": "180d1e8667c4ae0f7e459dca1bee658e7be7b03eafaea48c0da12ea62d44934e",
-  "corpus_sha256": "37fe1c12ad65caed9b6509753e6162cdc16c73d32641292090004b82b49aafb0",
+  "config_sha256": "2278a2ebe72cf86c68b6edd50a9a490f73de8834ece76150520e5bfc9fda8d5b",
+  "contract_sha256": "b93053ce55ab7d47e865de53fe02cc076f8a1eeaa1f19487ec3c41a5f6f647fa",
+  "corpus_sha256": "d2a6f9e1cfe174f7eb26baab7fb63ebfb3744c3dff0d22c0f3ff2fa65f36c90b",
   "dataset_snapshot_id": "44eface81cccdceb36c3fd61f93736267e63b84ba63902fac026659540518846",
   "gates": {
     "adversarial_cases_contained": true,
@@ -32,7 +32,7 @@
     "workflow_expectations_exact": true
   },
   "git_dirty": false,
-  "git_revision": "53ab955b54f241e3b3c9f6bfe29ca1fb53fc1089",
+  "git_revision": "b234007d63756c8211a2f7b2614ddd72452fd973",
   "limitations": [
     "Expectations are deterministic silver labels, not gold or human-reviewed labels.",
     "Fake provider behavior does not establish live DeepSeek availability.",
@@ -46,8 +46,8 @@
     "fabricated_evidence": 0,
     "fabricated_identifiers": 0,
     "input_tokens": 0,
-    "latency_ms_mean": 55.878300000404124,
-    "latency_ms_p95": 99.18280000056257,
+    "latency_ms_mean": 69.4101266672078,
+    "latency_ms_p95": 109.93569999845931,
     "output_tokens": 0,
     "provider_failure_case_count": 1,
     "public_leaks": 0,
@@ -58,5 +58,5 @@
     "workflow_routing_accuracy": 1.0
   },
   "schema_version": "p6-offline-agent-summary-v1",
-  "source_sha256": "fafe752c0ade85f33328ce12264be144b3271841dd36d6cd1eb578b11ba3a903"
+  "source_sha256": "541b011856418656d51041db30f61ff332b18945745f1460bc12dad6f5f2d0dc"
 }

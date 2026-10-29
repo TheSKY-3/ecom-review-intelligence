@@ -1,10 +1,10 @@
 # P5 fixed-case retrieval evaluation
 
 - State: PASSED
-- Evaluation Git revision: 17feacbd14acbddc09879814294fbf9fe9e50f4d
-- P4 store build revision: 17feacbd14acbddc09879814294fbf9fe9e50f4d
+- Evaluation Git revision: 1a94c2feccab8ce8d6811a8978a2e25f6aee49f4
+- P4 store build revision: 1a94c2feccab8ce8d6811a8978a2e25f6aee49f4
 - Dataset snapshot ID: 44eface81cccdceb36c3fd61f93736267e63b84ba63902fac026659540518846
-- P3 contract SHA-256: 180d1e8667c4ae0f7e459dca1bee658e7be7b03eafaea48c0da12ea62d44934e
+- P3 contract SHA-256: b93053ce55ab7d47e865de53fe02cc076f8a1eeaa1f19487ec3c41a5f6f647fa
 - Fixed cases: 27 ({'comparison': 8, 'diagnosis': 8, 'no_answer': 4, 'triage': 7})
 - Labels: {'silver': 27}
 
@@ -12,8 +12,8 @@
 
 | Retriever | Recall@k | Case hit rate | Citation integrity | Join errors | No-answer false positives | Mean ms | P95 ms |
 |---|---:|---:|---:|---:|---:|---:|---:|
-| lexical | 1.0 | 1.0 | 1.0 | 0 | 0 | 26.646259 | 44.2079 |
-| fts5_bm25 | 0.53271 | 0.869565 | 1.0 | 0 | 0 | 35.999522 | 49.7039 |
+| lexical | 1.0 | 1.0 | 1.0 | 0 | 0 | 31.182581 | 52.8918 |
+| fts5_bm25 | 0.515152 | 0.826087 | 1.0 | 0 | 0 | 33.156296 | 49.6746 |
 
 ## Interpretation boundary
 

@@ -269,18 +269,23 @@ def write_phase4_outputs(
     return summary_path, report_path
 
 
-def query_aspect(
+def query_aspect_evidence(
     store_path: Path,
     parent_asins: tuple[str, ...],
     aspect: str,
     *,
-    limit: int,
-) -> AspectQueryResult:
-    """Return exact-product local evidence matching a frozen aspect vocabulary."""
+    limit: int | None = None,
+) -> tuple[Evidence, ...]:
+    """Return matching evidence, optionally capped.
+
+    ``limit=None`` returns every matching review. This function and
+    ``query_aspect`` share one predicate and one polarity rule, so a full export
+    can never disagree with a sampled diagnosis about how a review was labeled.
+    """
 
     if not parent_asins:
         raise EngineError("At least one product parent_asin is required.")
-    if limit <= 0:
+    if limit is not None and limit <= 0:
         raise EngineError("Query limit must be positive.")
     with _open_sqlite(store_path) as connection:
         connection.row_factory = sqlite3.Row
@@ -289,22 +294,20 @@ def query_aspect(
         if aspect not in aspect_terms:
             raise EngineError("Requested aspect is not enabled by the frozen contract.")
         polarity_terms = json.loads(metadata["polarity_terms"])
-        product_placeholders = ",".join("?" for _ in parent_asins)
-        term_predicates = " OR ".join("lower(text) LIKE ?" for _ in aspect_terms[aspect])
-        parameters = [*parent_asins, *[f"%{term.lower()}%" for term in aspect_terms[aspect]], limit]
-        rows = connection.execute(
-            f"""
+        predicate, parameters = _aspect_predicate(parent_asins, aspect_terms[aspect])
+        statement = f"""
             SELECT evidence_id, source_line, parent_asin, text, rating, timestamp,
                    verified_purchase, helpful_vote
             FROM reviews
-            WHERE parent_asin IN ({product_placeholders}) AND ({term_predicates})
+            WHERE {predicate}
             ORDER BY source_line
-            LIMIT ?
-            """,
-            parameters,
-        ).fetchall()
+            """
+        if limit is None:
+            rows = connection.execute(statement, parameters).fetchall()
+        else:
+            rows = connection.execute(f"{statement} LIMIT ?", [*parameters, limit]).fetchall()
 
-    evidence = tuple(
+    return tuple(
         Evidence(
             evidence_id=row["evidence_id"],
             source_line=row["source_line"],
@@ -320,7 +323,92 @@ def query_aspect(
         )
         for row in rows
     )
+
+
+def query_aspect(
+    store_path: Path,
+    parent_asins: tuple[str, ...],
+    aspect: str,
+    *,
+    limit: int,
+) -> AspectQueryResult:
+    """Return exact-product local evidence matching a frozen aspect vocabulary."""
+
+    if not parent_asins:
+        raise EngineError("At least one product parent_asin is required.")
+    if limit <= 0:
+        raise EngineError("Query limit must be positive.")
+    evidence = query_aspect_evidence(store_path, parent_asins, aspect, limit=limit)
     return AspectQueryResult(aspect=aspect, strength=_strength(len(evidence)), evidence=evidence)
+
+
+def polarity_hits(text: str, polarity_terms: dict[str, list[str]]) -> tuple[str, tuple[str, ...]]:
+    """Return the frozen polarity plus the exact terms that produced it.
+
+    Exported sheets need to show *why* a review landed in a bucket. Deriving the
+    terms here, next to the rule itself, keeps the explanation from drifting away
+    from the classification it explains.
+    """
+
+    tokens = set(_TOKEN_PATTERN.findall(text.lower()))
+    supporting = sorted(tokens.intersection(polarity_terms["supporting"]))
+    opposing = sorted(tokens.intersection(polarity_terms["opposing"]))
+    if supporting and opposing or supporting == opposing and supporting:
+        bucket = "conflicting"
+    elif len(supporting) > len(opposing):
+        bucket = "supporting"
+    elif len(opposing) > len(supporting):
+        bucket = "opposing"
+    else:
+        bucket = "insufficient"
+    return bucket, tuple(supporting + opposing)
+
+
+def read_store_meta(store_path: Path) -> dict[str, str]:
+    """Return the frozen store metadata as raw key/value strings."""
+
+    with _open_sqlite(store_path) as connection:
+        return dict(connection.execute("SELECT key, value FROM store_meta ORDER BY key"))
+
+
+def _aspect_predicate(
+    parent_asins: tuple[str, ...], terms: list[str]
+) -> tuple[str, list[object]]:
+    """The one WHERE fragment that defines "this review is about this aspect"."""
+
+    product_placeholders = ",".join("?" for _ in parent_asins)
+    term_predicates = " OR ".join("lower(text) LIKE ?" for _ in terms)
+    return (
+        f"parent_asin IN ({product_placeholders}) AND ({term_predicates})",
+        [*parent_asins, *[f"%{term.lower()}%" for term in terms]],
+    )
+
+
+def count_aspect_matches(
+    store_path: Path,
+    parent_asins: tuple[str, ...],
+    aspect: str,
+) -> int:
+    """Count reviews matching a frozen aspect vocabulary, before any sample cap.
+
+    ``query_aspect`` returns at most ``limit`` rows and derives its strength tier
+    from how many it returned, so "STRONG" there means "the sample was full". This
+    count is what lets a caller state whether it read every matching review or
+    only the first few, which is a different and load-bearing claim.
+    """
+
+    if not parent_asins:
+        raise EngineError("At least one product parent_asin is required.")
+    with _open_sqlite(store_path) as connection:
+        metadata = dict(connection.execute("SELECT key, value FROM store_meta"))
+        aspect_terms = json.loads(metadata["aspect_terms"])
+        if aspect not in aspect_terms:
+            raise EngineError("Requested aspect is not enabled by the frozen contract.")
+        predicate, parameters = _aspect_predicate(parent_asins, aspect_terms[aspect])
+        row = connection.execute(
+            f"SELECT COUNT(*) FROM reviews WHERE {predicate}", parameters
+        ).fetchone()
+    return int(row[0])
 
 
 _INSIGHT_SAMPLE_QUOTAS: tuple[tuple[str, int], ...] = (
@@ -518,16 +606,7 @@ def verify_citation(store_path: Path, evidence_id: str) -> bool:
 
 
 def _polarity(text: str, polarity_terms: dict[str, list[str]]) -> str:
-    tokens = set(_TOKEN_PATTERN.findall(text.lower()))
-    supporting = len(tokens.intersection(polarity_terms["supporting"]))
-    opposing = len(tokens.intersection(polarity_terms["opposing"]))
-    if supporting and opposing or supporting == opposing and supporting:
-        return "conflicting"
-    if supporting > opposing:
-        return "supporting"
-    if opposing > supporting:
-        return "opposing"
-    return "insufficient"
+    return polarity_hits(text, polarity_terms)[0]
 
 
 def _strength(count: int) -> str:

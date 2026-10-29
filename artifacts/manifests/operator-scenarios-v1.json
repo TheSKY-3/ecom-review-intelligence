@@ -1,0 +1,70 @@
+{
+  "schema_version": "p7-operator-scenarios-v1",
+  "pack_id": "operator-presets-v1",
+  "scenarios": [
+    {
+      "id": "noise_conflict_compare",
+      "title": "先看 Northstar 噪音，有负面证据再横向比",
+      "steps": [
+        {
+          "step": 1,
+          "tool": "diagnosis",
+          "products": ["northstar"],
+          "aspects": ["noise"]
+        },
+        {
+          "step": 2,
+          "tool": "comparison",
+          "products": ["frostline", "northstar", "harbor"],
+          "aspects": ["noise"],
+          "when": {
+            "min_negative_or_conflicting": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "noise_guard_frostline",
+      "title": "Frostline 噪音没有负面证据就不花第二次预算",
+      "steps": [
+        {
+          "step": 1,
+          "tool": "diagnosis",
+          "products": ["frostline"],
+          "aspects": ["noise"]
+        },
+        {
+          "step": 2,
+          "tool": "comparison",
+          "products": ["frostline", "northstar", "harbor"],
+          "aspects": ["noise"],
+          "when": {
+            "min_negative_or_conflicting": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "worst_aspect_first",
+      "title": "先定位最严重的一项，再单独诊断它",
+      "steps": [
+        {
+          "step": 1,
+          "tool": "triage",
+          "products": ["frostline", "northstar", "harbor"],
+          "aspects": ["*"]
+        },
+        {
+          "step": 2,
+          "tool": "diagnosis",
+          "products": ["$top_product"],
+          "aspects": ["$top_aspect"],
+          "when": {
+            "min_strength": "WEAK",
+            "min_negative_or_conflicting": 2
+          }
+        }
+      ]
+    }
+  ]
+}

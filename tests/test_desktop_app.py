@@ -94,7 +94,12 @@ def test_bundled_service_uses_the_shipped_subset(tmp_path, monkeypatch) -> None:
     assert service.mode == "local"
     store = getattr(service, "_store_path", None)
     assert store is not None and store.name == "ice_makers_public.sqlite"
-    assert (tmp_path / "localappdata" / "EComReviewIntelligence").is_dir()
+    state = tmp_path / "localappdata" / "EComReviewIntelligence"
+    assert state.is_dir()
+    # A packaged app must not scatter exports next to the exe or wherever it was
+    # launched from, so both the folder and the path prefix point at user state.
+    assert service._export_dir == state / "exports"
+    assert service._project_root == state
 
 
 def test_state_directory_is_created_under_localappdata(tmp_path, monkeypatch) -> None:

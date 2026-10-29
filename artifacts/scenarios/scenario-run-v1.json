@@ -1,0 +1,760 @@
+{
+  "lineage": {
+    "contract_sha256": "b93053ce55ab7d47e865de53fe02cc076f8a1eeaa1f19487ec3c41a5f6f647fa",
+    "dataset_snapshot_id": "44eface81cccdceb36c3fd61f93736267e63b84ba63902fac026659540518846",
+    "max_steps_per_chain": 3,
+    "retrieval_limit_per_aspect": 5
+  },
+  "pack_id": "operator-presets-v1",
+  "pack_schema_version": "p7-operator-scenarios-v1",
+  "scenarios": [
+    {
+      "scenario_id": "noise_conflict_compare",
+      "steps": [
+        {
+          "aspects": [
+            "noise"
+          ],
+          "condition": null,
+          "items": [
+            {
+              "aspect": "noise",
+              "conflicting": 4,
+              "evidence_count": 5,
+              "evidence_ids": [
+                "5c9904c085f1bd916817613d35e57dd737318646a9243b72a0083e0b5c203972",
+                "50a375c4059f795a974d5b10fa521293254993b8d2db0cfed81c4ef2c0997ba6",
+                "b7c8fc4bbae84aa04ea10de6b2c289173edf0adedc4b0f2ad1932fa3ea842336",
+                "7aa446bbcdba53205db17c011529cdcaf78890f051b5385ab5715ac4ca866700",
+                "ce0fe8dbecad2fbc2940918ce2b0619ed80cd992dabca5c3fad6bd56929cbbb3"
+              ],
+              "insufficient": 1,
+              "negative_or_conflicting": 4,
+              "opposing": 0,
+              "product_id": "B07YF9SGBW",
+              "strength": "STRONG",
+              "supporting": 0
+            }
+          ],
+          "products": [
+            "northstar"
+          ],
+          "status": "executed",
+          "step": 1,
+          "tool": "diagnosis"
+        },
+        {
+          "aspects": [
+            "noise"
+          ],
+          "condition": {
+            "measured": {
+              "item_count": 1,
+              "max_negative_or_conflicting": 4,
+              "passing_item_count": 1,
+              "strengths": [
+                "STRONG"
+              ]
+            },
+            "rule": {
+              "min_negative_or_conflicting": 1,
+              "min_strength": null,
+              "require": "any_item"
+            },
+            "satisfied": true
+          },
+          "items": [
+            {
+              "aspect": "noise",
+              "conflicting": 1,
+              "evidence_count": 5,
+              "evidence_ids": [
+                "e83050ebf5186c08d705fa1f311bb522aa607ccf66448ecf8a2dccb552c974ab",
+                "53ba7ff396536cdc554d4f1e578b43893832289f3201e5f6a8a47b270b60fdf5",
+                "6265ddd90f5a0936b8dbee2598fd6a52658dc99425439eeb0a460e3a2287b5e6",
+                "0dad860e81f9d3fd4e01bf32076ab210eb1e46cd3496b26b7d8252cbabf79323",
+                "c5ba28849851fdf2b96a3399173c40a56d5196fa7aae98775dca1b65f0855929"
+              ],
+              "insufficient": 0,
+              "negative_or_conflicting": 2,
+              "opposing": 1,
+              "product_id": "B07NVJP82G",
+              "strength": "STRONG",
+              "supporting": 3
+            },
+            {
+              "aspect": "noise",
+              "conflicting": 4,
+              "evidence_count": 5,
+              "evidence_ids": [
+                "5c9904c085f1bd916817613d35e57dd737318646a9243b72a0083e0b5c203972",
+                "50a375c4059f795a974d5b10fa521293254993b8d2db0cfed81c4ef2c0997ba6",
+                "b7c8fc4bbae84aa04ea10de6b2c289173edf0adedc4b0f2ad1932fa3ea842336",
+                "7aa446bbcdba53205db17c011529cdcaf78890f051b5385ab5715ac4ca866700",
+                "ce0fe8dbecad2fbc2940918ce2b0619ed80cd992dabca5c3fad6bd56929cbbb3"
+              ],
+              "insufficient": 1,
+              "negative_or_conflicting": 4,
+              "opposing": 0,
+              "product_id": "B07YF9SGBW",
+              "strength": "STRONG",
+              "supporting": 0
+            },
+            {
+              "aspect": "noise",
+              "conflicting": 1,
+              "evidence_count": 5,
+              "evidence_ids": [
+                "9fec19ee051582469f35b4d83c27ddbed47baf99acc6603ea32464555c08b943",
+                "398353dd5e2b789076a640a69ae441320269b04696eb090d223c044cfb2deab9",
+                "b1b06e85d10ab45d4594ecc25500780653395510c7ab71388e2e3eeb84558e16",
+                "e2aa807acb522ad39da0168fb866fa915ede8e20061bbc67bd63ea4b1bb389ec",
+                "24925453f6b289249fe28c7f1ca7411e64343539e8404cd01660160580ee47e2"
+              ],
+              "insufficient": 0,
+              "negative_or_conflicting": 3,
+              "opposing": 2,
+              "product_id": "B0BS6H2WL5",
+              "strength": "STRONG",
+              "supporting": 2
+            }
+          ],
+          "products": [
+            "frostline",
+            "northstar",
+            "harbor"
+          ],
+          "status": "executed",
+          "step": 2,
+          "tool": "comparison"
+        }
+      ],
+      "stop_code": "COMPLETED",
+      "title": "先看 Northstar 噪音，有负面证据再横向比"
+    },
+    {
+      "scenario_id": "noise_guard_frostline",
+      "steps": [
+        {
+          "aspects": [
+            "noise"
+          ],
+          "condition": null,
+          "items": [
+            {
+              "aspect": "noise",
+              "conflicting": 1,
+              "evidence_count": 5,
+              "evidence_ids": [
+                "e83050ebf5186c08d705fa1f311bb522aa607ccf66448ecf8a2dccb552c974ab",
+                "53ba7ff396536cdc554d4f1e578b43893832289f3201e5f6a8a47b270b60fdf5",
+                "6265ddd90f5a0936b8dbee2598fd6a52658dc99425439eeb0a460e3a2287b5e6",
+                "0dad860e81f9d3fd4e01bf32076ab210eb1e46cd3496b26b7d8252cbabf79323",
+                "c5ba28849851fdf2b96a3399173c40a56d5196fa7aae98775dca1b65f0855929"
+              ],
+              "insufficient": 0,
+              "negative_or_conflicting": 2,
+              "opposing": 1,
+              "product_id": "B07NVJP82G",
+              "strength": "STRONG",
+              "supporting": 3
+            }
+          ],
+          "products": [
+            "frostline"
+          ],
+          "status": "executed",
+          "step": 1,
+          "tool": "diagnosis"
+        },
+        {
+          "aspects": [
+            "noise"
+          ],
+          "condition": {
+            "measured": {
+              "item_count": 1,
+              "max_negative_or_conflicting": 2,
+              "passing_item_count": 1,
+              "strengths": [
+                "STRONG"
+              ]
+            },
+            "rule": {
+              "min_negative_or_conflicting": 1,
+              "min_strength": null,
+              "require": "any_item"
+            },
+            "satisfied": true
+          },
+          "items": [
+            {
+              "aspect": "noise",
+              "conflicting": 1,
+              "evidence_count": 5,
+              "evidence_ids": [
+                "e83050ebf5186c08d705fa1f311bb522aa607ccf66448ecf8a2dccb552c974ab",
+                "53ba7ff396536cdc554d4f1e578b43893832289f3201e5f6a8a47b270b60fdf5",
+                "6265ddd90f5a0936b8dbee2598fd6a52658dc99425439eeb0a460e3a2287b5e6",
+                "0dad860e81f9d3fd4e01bf32076ab210eb1e46cd3496b26b7d8252cbabf79323",
+                "c5ba28849851fdf2b96a3399173c40a56d5196fa7aae98775dca1b65f0855929"
+              ],
+              "insufficient": 0,
+              "negative_or_conflicting": 2,
+              "opposing": 1,
+              "product_id": "B07NVJP82G",
+              "strength": "STRONG",
+              "supporting": 3
+            },
+            {
+              "aspect": "noise",
+              "conflicting": 4,
+              "evidence_count": 5,
+              "evidence_ids": [
+                "5c9904c085f1bd916817613d35e57dd737318646a9243b72a0083e0b5c203972",
+                "50a375c4059f795a974d5b10fa521293254993b8d2db0cfed81c4ef2c0997ba6",
+                "b7c8fc4bbae84aa04ea10de6b2c289173edf0adedc4b0f2ad1932fa3ea842336",
+                "7aa446bbcdba53205db17c011529cdcaf78890f051b5385ab5715ac4ca866700",
+                "ce0fe8dbecad2fbc2940918ce2b0619ed80cd992dabca5c3fad6bd56929cbbb3"
+              ],
+              "insufficient": 1,
+              "negative_or_conflicting": 4,
+              "opposing": 0,
+              "product_id": "B07YF9SGBW",
+              "strength": "STRONG",
+              "supporting": 0
+            },
+            {
+              "aspect": "noise",
+              "conflicting": 1,
+              "evidence_count": 5,
+              "evidence_ids": [
+                "9fec19ee051582469f35b4d83c27ddbed47baf99acc6603ea32464555c08b943",
+                "398353dd5e2b789076a640a69ae441320269b04696eb090d223c044cfb2deab9",
+                "b1b06e85d10ab45d4594ecc25500780653395510c7ab71388e2e3eeb84558e16",
+                "e2aa807acb522ad39da0168fb866fa915ede8e20061bbc67bd63ea4b1bb389ec",
+                "24925453f6b289249fe28c7f1ca7411e64343539e8404cd01660160580ee47e2"
+              ],
+              "insufficient": 0,
+              "negative_or_conflicting": 3,
+              "opposing": 2,
+              "product_id": "B0BS6H2WL5",
+              "strength": "STRONG",
+              "supporting": 2
+            }
+          ],
+          "products": [
+            "frostline",
+            "northstar",
+            "harbor"
+          ],
+          "status": "executed",
+          "step": 2,
+          "tool": "comparison"
+        }
+      ],
+      "stop_code": "COMPLETED",
+      "title": "Frostline 噪音没有负面证据就不花第二次预算"
+    },
+    {
+      "scenario_id": "worst_aspect_first",
+      "steps": [
+        {
+          "aspects": [
+            "capacity_speed",
+            "cleaning_maintenance",
+            "ease_setup",
+            "ice_quality",
+            "leakage",
+            "noise",
+            "reliability",
+            "size_portability"
+          ],
+          "condition": null,
+          "items": [
+            {
+              "aspect": "reliability",
+              "conflicting": 2,
+              "evidence_count": 5,
+              "evidence_ids": [
+                "f0215099147a98646d6222e44d6d467c625670762fcea8ed465a23915e873fcb",
+                "e4ef1118c39db826687efae8c7e4a149a57b764d9b2332d4027df564da8d1661",
+                "7ceb3d5db72180b292ed13582d6e85167fcc6ea8456af205732989787179a312",
+                "4102aa6ffb0d57df6dbc1be0c6f6c1a878b9fdec6d7e7fcc8be669510d813977",
+                "4bae4a49442be11837faaff48830a7f4605048b0d061db26cf96f56731c3e7d7"
+              ],
+              "insufficient": 0,
+              "negative_or_conflicting": 5,
+              "opposing": 3,
+              "product_id": "B07NVJP82G",
+              "strength": "STRONG",
+              "supporting": 0
+            },
+            {
+              "aspect": "reliability",
+              "conflicting": 1,
+              "evidence_count": 5,
+              "evidence_ids": [
+                "b1b06e85d10ab45d4594ecc25500780653395510c7ab71388e2e3eeb84558e16",
+                "dd1af3836b4b0699e7e14aa346c14ddfe6123d425cc250dd6c23699e197ef5d9",
+                "295867aa8e1e9f9597ca73804759147c5a74a1c768155c96194ede89fb5460fa",
+                "77e0607e6f55fad9f4fd38bd0ee103dd938da40f99e7331b3f2ac0c15b5656a1",
+                "86c36f8790e692411142e1f9ac33cece5fa59efdf4cdb867b11cdfefa0415758"
+              ],
+              "insufficient": 0,
+              "negative_or_conflicting": 5,
+              "opposing": 4,
+              "product_id": "B0BS6H2WL5",
+              "strength": "STRONG",
+              "supporting": 0
+            },
+            {
+              "aspect": "capacity_speed",
+              "conflicting": 4,
+              "evidence_count": 5,
+              "evidence_ids": [
+                "7d07721b3a4dcd2482fbceae0bf8da4dcfc086606ad2f06f6cfd5abf3c3dca0f",
+                "50a375c4059f795a974d5b10fa521293254993b8d2db0cfed81c4ef2c0997ba6",
+                "865cd9abb67a0b4ee0654f12a1626b162a6c2abde5ee5ed2c624300042b65435",
+                "ce0fe8dbecad2fbc2940918ce2b0619ed80cd992dabca5c3fad6bd56929cbbb3",
+                "875994193a28ffe1aa17fcf803b5f77e3832d3836dcdf113d15754450fbcfd6a"
+              ],
+              "insufficient": 0,
+              "negative_or_conflicting": 4,
+              "opposing": 0,
+              "product_id": "B07YF9SGBW",
+              "strength": "STRONG",
+              "supporting": 1
+            },
+            {
+              "aspect": "cleaning_maintenance",
+              "conflicting": 4,
+              "evidence_count": 5,
+              "evidence_ids": [
+                "7d07721b3a4dcd2482fbceae0bf8da4dcfc086606ad2f06f6cfd5abf3c3dca0f",
+                "50a375c4059f795a974d5b10fa521293254993b8d2db0cfed81c4ef2c0997ba6",
+                "865cd9abb67a0b4ee0654f12a1626b162a6c2abde5ee5ed2c624300042b65435",
+                "a49bf02f2dbe02a20e75d87b4dc486833e52bcb96e2aef67f6e99e7868616c9d",
+                "ce0fe8dbecad2fbc2940918ce2b0619ed80cd992dabca5c3fad6bd56929cbbb3"
+              ],
+              "insufficient": 0,
+              "negative_or_conflicting": 4,
+              "opposing": 0,
+              "product_id": "B07YF9SGBW",
+              "strength": "STRONG",
+              "supporting": 1
+            },
+            {
+              "aspect": "ease_setup",
+              "conflicting": 3,
+              "evidence_count": 5,
+              "evidence_ids": [
+                "7d07721b3a4dcd2482fbceae0bf8da4dcfc086606ad2f06f6cfd5abf3c3dca0f",
+                "50a375c4059f795a974d5b10fa521293254993b8d2db0cfed81c4ef2c0997ba6",
+                "865cd9abb67a0b4ee0654f12a1626b162a6c2abde5ee5ed2c624300042b65435",
+                "ce0fe8dbecad2fbc2940918ce2b0619ed80cd992dabca5c3fad6bd56929cbbb3",
+                "10763a39fca188f0d2e8e0d5d40ba1a5f3f5e82d919a1e2189cff68f77c2399b"
+              ],
+              "insufficient": 0,
+              "negative_or_conflicting": 4,
+              "opposing": 1,
+              "product_id": "B07YF9SGBW",
+              "strength": "STRONG",
+              "supporting": 1
+            },
+            {
+              "aspect": "noise",
+              "conflicting": 4,
+              "evidence_count": 5,
+              "evidence_ids": [
+                "5c9904c085f1bd916817613d35e57dd737318646a9243b72a0083e0b5c203972",
+                "50a375c4059f795a974d5b10fa521293254993b8d2db0cfed81c4ef2c0997ba6",
+                "b7c8fc4bbae84aa04ea10de6b2c289173edf0adedc4b0f2ad1932fa3ea842336",
+                "7aa446bbcdba53205db17c011529cdcaf78890f051b5385ab5715ac4ca866700",
+                "ce0fe8dbecad2fbc2940918ce2b0619ed80cd992dabca5c3fad6bd56929cbbb3"
+              ],
+              "insufficient": 1,
+              "negative_or_conflicting": 4,
+              "opposing": 0,
+              "product_id": "B07YF9SGBW",
+              "strength": "STRONG",
+              "supporting": 0
+            },
+            {
+              "aspect": "reliability",
+              "conflicting": 3,
+              "evidence_count": 5,
+              "evidence_ids": [
+                "150579338a1fab2e24726df0b5592aa2ec58e24c9f923175b07e1af693d0d2ad",
+                "a49bf02f2dbe02a20e75d87b4dc486833e52bcb96e2aef67f6e99e7868616c9d",
+                "12204ad758f5c7988fa54e8ba9a857b4b2761474cc150dd6f7403bb3eff88931",
+                "61e5683903daf8d5b8af9e2fe488cd1baf8d6db55a401262d2df9c0574103614",
+                "400d3761af8f9f6ea60c775d447c5dcb109868dc6fe93290097fc926dd2a26af"
+              ],
+              "insufficient": 0,
+              "negative_or_conflicting": 4,
+              "opposing": 1,
+              "product_id": "B07YF9SGBW",
+              "strength": "STRONG",
+              "supporting": 1
+            },
+            {
+              "aspect": "size_portability",
+              "conflicting": 2,
+              "evidence_count": 5,
+              "evidence_ids": [
+                "7d07721b3a4dcd2482fbceae0bf8da4dcfc086606ad2f06f6cfd5abf3c3dca0f",
+                "50a375c4059f795a974d5b10fa521293254993b8d2db0cfed81c4ef2c0997ba6",
+                "a49bf02f2dbe02a20e75d87b4dc486833e52bcb96e2aef67f6e99e7868616c9d",
+                "73ba27b42433bd9688385457fb67d7d92999cddffcd8948000c708510019cb8d",
+                "7511818f7b7f5ab62022b7a41cd2ac8e53f9c6c6fae68b4b725d630debdfd654"
+              ],
+              "insufficient": 0,
+              "negative_or_conflicting": 4,
+              "opposing": 2,
+              "product_id": "B07YF9SGBW",
+              "strength": "STRONG",
+              "supporting": 1
+            },
+            {
+              "aspect": "leakage",
+              "conflicting": 2,
+              "evidence_count": 5,
+              "evidence_ids": [
+                "88aecb49ec55a82ae19a17eccef71121097e0f10a1389e458689e857ae040b45",
+                "fd027614877c9b073e160499f3f39bd3d5dbe34993d11a661e2139332f5bd4b1",
+                "6a38ec0e8b260a733cf6aebcf93a9bebf6ba6c412b59a44624800c968903aa3d",
+                "053e79582625f9402fe094ef9faa7048dcc47b1d66fa55dc3ced779a9d9a5d13",
+                "6970764660c7a6558c435f689b662ffae6d11dbca3166f9cf759f040f61920c1"
+              ],
+              "insufficient": 1,
+              "negative_or_conflicting": 3,
+              "opposing": 1,
+              "product_id": "B07NVJP82G",
+              "strength": "STRONG",
+              "supporting": 1
+            },
+            {
+              "aspect": "leakage",
+              "conflicting": 1,
+              "evidence_count": 5,
+              "evidence_ids": [
+                "f2699e3aa5077382c02d1a28cab06d3b6153e0f76dc7845696986b24cb27a3a3",
+                "e2aa807acb522ad39da0168fb866fa915ede8e20061bbc67bd63ea4b1bb389ec",
+                "295867aa8e1e9f9597ca73804759147c5a74a1c768155c96194ede89fb5460fa",
+                "5bac3f65f491df4f4599b905396bf7d27cf0b52d10b1f7870d5f495f96d7ee07",
+                "a2e8407f1ad15460951613888cf266df90bb4e44c9931db7abb95a2495216bf7"
+              ],
+              "insufficient": 1,
+              "negative_or_conflicting": 3,
+              "opposing": 2,
+              "product_id": "B0BS6H2WL5",
+              "strength": "STRONG",
+              "supporting": 1
+            },
+            {
+              "aspect": "noise",
+              "conflicting": 1,
+              "evidence_count": 5,
+              "evidence_ids": [
+                "9fec19ee051582469f35b4d83c27ddbed47baf99acc6603ea32464555c08b943",
+                "398353dd5e2b789076a640a69ae441320269b04696eb090d223c044cfb2deab9",
+                "b1b06e85d10ab45d4594ecc25500780653395510c7ab71388e2e3eeb84558e16",
+                "e2aa807acb522ad39da0168fb866fa915ede8e20061bbc67bd63ea4b1bb389ec",
+                "24925453f6b289249fe28c7f1ca7411e64343539e8404cd01660160580ee47e2"
+              ],
+              "insufficient": 0,
+              "negative_or_conflicting": 3,
+              "opposing": 2,
+              "product_id": "B0BS6H2WL5",
+              "strength": "STRONG",
+              "supporting": 2
+            },
+            {
+              "aspect": "capacity_speed",
+              "conflicting": 1,
+              "evidence_count": 5,
+              "evidence_ids": [
+                "398353dd5e2b789076a640a69ae441320269b04696eb090d223c044cfb2deab9",
+                "c288f58404e326383dad35959d54bc17a7ad6a22dbce46851a56be566a7192d9",
+                "b1b06e85d10ab45d4594ecc25500780653395510c7ab71388e2e3eeb84558e16",
+                "b4db1fcd3b4663dcf8fe92b92ebf989ebe08216794c401ab70e321954d66d16b",
+                "b6b448a80cb50d18aef5e1a1d25291d7c411d919b4c963a65403b7beb8b8dba3"
+              ],
+              "insufficient": 1,
+              "negative_or_conflicting": 2,
+              "opposing": 1,
+              "product_id": "B0BS6H2WL5",
+              "strength": "STRONG",
+              "supporting": 2
+            },
+            {
+              "aspect": "cleaning_maintenance",
+              "conflicting": 2,
+              "evidence_count": 5,
+              "evidence_ids": [
+                "0dad860e81f9d3fd4e01bf32076ab210eb1e46cd3496b26b7d8252cbabf79323",
+                "9d6812d763c48ab3b0f1f123a57b78762b0336c1db139dec033aa1d4d91cf8af",
+                "44ec353ac7b8a253a91f1f96c99c7edd38ebe80f413571f88029d1ea3f290d20",
+                "4928028434af1302134ef4e8662f192016dd9800cd3060f5dbd95761082df229",
+                "8aac21e890bf01cf98aa0fd40101cdec1ca22d42b6ae673716e348a5ef813f3d"
+              ],
+              "insufficient": 1,
+              "negative_or_conflicting": 2,
+              "opposing": 0,
+              "product_id": "B07NVJP82G",
+              "strength": "STRONG",
+              "supporting": 2
+            },
+            {
+              "aspect": "ease_setup",
+              "conflicting": 2,
+              "evidence_count": 5,
+              "evidence_ids": [
+                "446f263292831a34217f2f613440ed5cd0750cc523f16e9fce52482f7eda87a4",
+                "e83050ebf5186c08d705fa1f311bb522aa607ccf66448ecf8a2dccb552c974ab",
+                "6265ddd90f5a0936b8dbee2598fd6a52658dc99425439eeb0a460e3a2287b5e6",
+                "9d6812d763c48ab3b0f1f123a57b78762b0336c1db139dec033aa1d4d91cf8af",
+                "9e80354235197568f84c85cc57a0b699aa3783763b00f31f03e63e902700b50b"
+              ],
+              "insufficient": 0,
+              "negative_or_conflicting": 2,
+              "opposing": 0,
+              "product_id": "B07NVJP82G",
+              "strength": "STRONG",
+              "supporting": 3
+            },
+            {
+              "aspect": "ease_setup",
+              "conflicting": 2,
+              "evidence_count": 5,
+              "evidence_ids": [
+                "30ba4c664cc7240abbec406288131860379b9b25ee38b635f7db6882b7a90ef9",
+                "9fec19ee051582469f35b4d83c27ddbed47baf99acc6603ea32464555c08b943",
+                "f2699e3aa5077382c02d1a28cab06d3b6153e0f76dc7845696986b24cb27a3a3",
+                "34fdb365d28d9287aacfea1372e3d42175e7b4b073509cdb504c3083c103ff4b",
+                "77e0607e6f55fad9f4fd38bd0ee103dd938da40f99e7331b3f2ac0c15b5656a1"
+              ],
+              "insufficient": 0,
+              "negative_or_conflicting": 2,
+              "opposing": 0,
+              "product_id": "B0BS6H2WL5",
+              "strength": "STRONG",
+              "supporting": 3
+            },
+            {
+              "aspect": "ice_quality",
+              "conflicting": 1,
+              "evidence_count": 5,
+              "evidence_ids": [
+                "5389a1742f47e1997c15a5dd4985e29b7b5d776f61c197f5b51a58c51814b0db",
+                "5399ebb6e17d872b5d9e29d14762ec8aaa712e23d817ef8fd643eb0bbc7d9308",
+                "6265ddd90f5a0936b8dbee2598fd6a52658dc99425439eeb0a460e3a2287b5e6",
+                "7ceb3d5db72180b292ed13582d6e85167fcc6ea8456af205732989787179a312",
+                "4102aa6ffb0d57df6dbc1be0c6f6c1a878b9fdec6d7e7fcc8be669510d813977"
+              ],
+              "insufficient": 0,
+              "negative_or_conflicting": 2,
+              "opposing": 1,
+              "product_id": "B07NVJP82G",
+              "strength": "STRONG",
+              "supporting": 3
+            },
+            {
+              "aspect": "ice_quality",
+              "conflicting": 2,
+              "evidence_count": 5,
+              "evidence_ids": [
+                "5c9904c085f1bd916817613d35e57dd737318646a9243b72a0083e0b5c203972",
+                "4a13f1f94d2e989ba7c179becc9c2a337914a04b733aabfb3ba72425095a4509",
+                "7d07721b3a4dcd2482fbceae0bf8da4dcfc086606ad2f06f6cfd5abf3c3dca0f",
+                "865cd9abb67a0b4ee0654f12a1626b162a6c2abde5ee5ed2c624300042b65435",
+                "3b06fc06849440c0e1f9a460486833f6eac91d42bbe1efcb880ec4e58b884d96"
+              ],
+              "insufficient": 1,
+              "negative_or_conflicting": 2,
+              "opposing": 0,
+              "product_id": "B07YF9SGBW",
+              "strength": "STRONG",
+              "supporting": 2
+            },
+            {
+              "aspect": "ice_quality",
+              "conflicting": 0,
+              "evidence_count": 5,
+              "evidence_ids": [
+                "30ba4c664cc7240abbec406288131860379b9b25ee38b635f7db6882b7a90ef9",
+                "83f4656537f5ad8df71abb86663c460af96589dce4f32b943dc28c834ed79ae5",
+                "b1b06e85d10ab45d4594ecc25500780653395510c7ab71388e2e3eeb84558e16",
+                "e2aa807acb522ad39da0168fb866fa915ede8e20061bbc67bd63ea4b1bb389ec",
+                "7278638c4d012b4da530c1261d12d3649f477743de56f6e36e642800782f8d19"
+              ],
+              "insufficient": 2,
+              "negative_or_conflicting": 2,
+              "opposing": 2,
+              "product_id": "B0BS6H2WL5",
+              "strength": "STRONG",
+              "supporting": 1
+            },
+            {
+              "aspect": "leakage",
+              "conflicting": 1,
+              "evidence_count": 5,
+              "evidence_ids": [
+                "f54f3b328e5a876b94c27be2380e2d5b47685b20ece57dd0d0ecc486cfff5f3f",
+                "0779acb6af5df1f135394527006044367e145c9c532c35a28af5416abe2aa9ef",
+                "e0745a79f9bdf287db497ffa77175cb859914a647ed73c9e557b2f61053185a6",
+                "31179638ede0dfc03d228ee87820853f38914089d080327f76dfc5e2a4603d08",
+                "9b30e80d4c8da8418015a2dbadd0b73bd0b0c150b02a978f9b9d29f68fb8c5ba"
+              ],
+              "insufficient": 2,
+              "negative_or_conflicting": 2,
+              "opposing": 1,
+              "product_id": "B07YF9SGBW",
+              "strength": "STRONG",
+              "supporting": 1
+            },
+            {
+              "aspect": "noise",
+              "conflicting": 1,
+              "evidence_count": 5,
+              "evidence_ids": [
+                "e83050ebf5186c08d705fa1f311bb522aa607ccf66448ecf8a2dccb552c974ab",
+                "53ba7ff396536cdc554d4f1e578b43893832289f3201e5f6a8a47b270b60fdf5",
+                "6265ddd90f5a0936b8dbee2598fd6a52658dc99425439eeb0a460e3a2287b5e6",
+                "0dad860e81f9d3fd4e01bf32076ab210eb1e46cd3496b26b7d8252cbabf79323",
+                "c5ba28849851fdf2b96a3399173c40a56d5196fa7aae98775dca1b65f0855929"
+              ],
+              "insufficient": 0,
+              "negative_or_conflicting": 2,
+              "opposing": 1,
+              "product_id": "B07NVJP82G",
+              "strength": "STRONG",
+              "supporting": 3
+            },
+            {
+              "aspect": "size_portability",
+              "conflicting": 2,
+              "evidence_count": 5,
+              "evidence_ids": [
+                "5399ebb6e17d872b5d9e29d14762ec8aaa712e23d817ef8fd643eb0bbc7d9308",
+                "446f263292831a34217f2f613440ed5cd0750cc523f16e9fce52482f7eda87a4",
+                "6265ddd90f5a0936b8dbee2598fd6a52658dc99425439eeb0a460e3a2287b5e6",
+                "8bd00c2be80067bd31f131c8f080b3f1e1ad8bfb9e141ef216d7a1f1ef9ef0c6",
+                "116d0de365d58f962b0ea963d7339a5924f91d3800739f92f8c095f5c3547605"
+              ],
+              "insufficient": 0,
+              "negative_or_conflicting": 2,
+              "opposing": 0,
+              "product_id": "B07NVJP82G",
+              "strength": "STRONG",
+              "supporting": 3
+            },
+            {
+              "aspect": "capacity_speed",
+              "conflicting": 0,
+              "evidence_count": 5,
+              "evidence_ids": [
+                "446f263292831a34217f2f613440ed5cd0750cc523f16e9fce52482f7eda87a4",
+                "b917ad26a21d1af141aa442096d513144fc1dd5f8ff6d9cb4a5c9c459b8f1877",
+                "6265ddd90f5a0936b8dbee2598fd6a52658dc99425439eeb0a460e3a2287b5e6",
+                "c5ba28849851fdf2b96a3399173c40a56d5196fa7aae98775dca1b65f0855929",
+                "e8527e415bab477f9355133d5f1aaa8ee4e42ddd985fb679c6b69f06655ea37c"
+              ],
+              "insufficient": 0,
+              "negative_or_conflicting": 1,
+              "opposing": 1,
+              "product_id": "B07NVJP82G",
+              "strength": "STRONG",
+              "supporting": 4
+            },
+            {
+              "aspect": "cleaning_maintenance",
+              "conflicting": 1,
+              "evidence_count": 5,
+              "evidence_ids": [
+                "a4fc18e3c19e8f9f1263d0022b13f53749892d687debfebc09bc57b9aeab5ce8",
+                "f2699e3aa5077382c02d1a28cab06d3b6153e0f76dc7845696986b24cb27a3a3",
+                "81238b2f29ce40fd5d1a3faf096e97c1705a4b203a87d5f112a224b2235c56f4",
+                "b4db1fcd3b4663dcf8fe92b92ebf989ebe08216794c401ab70e321954d66d16b",
+                "34fdb365d28d9287aacfea1372e3d42175e7b4b073509cdb504c3083c103ff4b"
+              ],
+              "insufficient": 1,
+              "negative_or_conflicting": 1,
+              "opposing": 0,
+              "product_id": "B0BS6H2WL5",
+              "strength": "STRONG",
+              "supporting": 3
+            }
+          ],
+          "products": [
+            "frostline",
+            "northstar",
+            "harbor"
+          ],
+          "status": "executed",
+          "step": 1,
+          "tool": "triage"
+        },
+        {
+          "aspects": [
+            "reliability"
+          ],
+          "condition": {
+            "measured": {
+              "item_count": 23,
+              "max_negative_or_conflicting": 5,
+              "passing_item_count": 21,
+              "strengths": [
+                "STRONG"
+              ]
+            },
+            "rule": {
+              "min_negative_or_conflicting": 2,
+              "min_strength": "WEAK",
+              "require": "any_item"
+            },
+            "satisfied": true
+          },
+          "items": [
+            {
+              "aspect": "reliability",
+              "conflicting": 2,
+              "evidence_count": 5,
+              "evidence_ids": [
+                "f0215099147a98646d6222e44d6d467c625670762fcea8ed465a23915e873fcb",
+                "e4ef1118c39db826687efae8c7e4a149a57b764d9b2332d4027df564da8d1661",
+                "7ceb3d5db72180b292ed13582d6e85167fcc6ea8456af205732989787179a312",
+                "4102aa6ffb0d57df6dbc1be0c6f6c1a878b9fdec6d7e7fcc8be669510d813977",
+                "4bae4a49442be11837faaff48830a7f4605048b0d061db26cf96f56731c3e7d7"
+              ],
+              "insufficient": 0,
+              "negative_or_conflicting": 5,
+              "opposing": 3,
+              "product_id": "B07NVJP82G",
+              "strength": "STRONG",
+              "supporting": 0
+            }
+          ],
+          "products": [
+            "frostline"
+          ],
+          "status": "executed",
+          "step": 2,
+          "tool": "diagnosis"
+        }
+      ],
+      "stop_code": "COMPLETED",
+      "title": "先定位最严重的一项，再单独诊断它"
+    }
+  ],
+  "schema_version": "p7-scenario-run-v1",
+  "totals": {
+    "executed_step_count": 6,
+    "gated_out_step_count": 0,
+    "scenario_count": 3,
+    "stop_codes": {
+      "COMPLETED": 3
+    }
+  }
+}

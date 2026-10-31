@@ -34,7 +34,7 @@ python -m venv .venv
 
 这份子集是**固定演示子集,不是数据分发通道**:没有批量导出接口,也不会加。
 出处、类目与抽样范围写在页面上,删除请求的渠道见 `docs/data-use-and-publication.md`。
-完整类目库(165 MB)与原始 gzip 仍只在本机。
+完整类目库(约 118 MB)与原始 gzip 仍只在本机。
 
 ## Render(免费层,一条 Blueprint 部署)
 
@@ -116,7 +116,7 @@ python scripts/serve_demo.py --host 0.0.0.0 --allow-non-loopback --port 8000 --m
 - 没有用户体系:页面上的「确认/存疑/驳回」不需要登录,不要在多人共用的公网环境里跑 `local` 模式。
 - `local` 模式下 `data/` 必须可写:每次运行写一份 LangGraph checkpoint,每次点判定追加一行到 `data/processed/p7_workbench_verdicts.jsonl`。
 - 没有在 CI 里构建过镜像:镜像是 2026-10-23 在开发机的 Docker Desktop 上手工构建并实测的,没有接 CI。
-- 那次实测做了什么:`demo` 镜像 341 MB,非 root(uid 10001),`HEALTHCHECK /health`;`demo` 与 `local` 两个 profile 都起着跑通了完整流程(诊断 766/5、对比 2234/10、分诊 2929/10),容器内人工判定落盘、无密钥时显示「未配置密钥」、访问者自带 key 的路径各验一遍。`local` profile 要挂 165 MB 私有库,只在私有仓库里跑通。
+- 那次实测做了什么:`demo` 镜像 341 MB,非 root(uid 10001),`HEALTHCHECK /health`;`demo` 与 `local` 两个 profile 都起着跑通了完整流程(诊断 766/5、对比 2234/10、分诊 2929/10),容器内人工判定落盘、无密钥时显示「未配置密钥」、访问者自带 key 的路径各验一遍。`local` profile 要挂约 118 MB 私有库,只在私有仓库里跑通。
 
 ## 桌面版:双击运行的 exe(Windows)
 

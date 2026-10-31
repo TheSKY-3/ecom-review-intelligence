@@ -15,8 +15,8 @@
 - P3 contract: `b93053ce55ab7d47e865de53fe02cc076f8a1eeaa1f19487ec3c41a5f6f647fa`
 - P6 config: `2278a2ebe72cf86c68b6edd50a9a490f73de8834ece76150520e5bfc9fda8d5b`
 - Case corpus: `d2a6f9e1cfe174f7eb26baab7fb63ebfb3744c3dff0d22c0f3ff2fa65f36c90b`
-- Git revision: `b234007d63756c8211a2f7b2614ddd72452fd973`
-- Source SHA-256: `541b011856418656d51041db30f61ff332b18945745f1460bc12dad6f5f2d0dc`
+- Git revision: `b6ad68f0a637d7a073ed997fab1f3e01eda099ba`
+- Source SHA-256: `ba7ee72f9478394916fda717bd05d543b665c67b9a5f4536f4cf7c3f10b60dac`
 - Git dirty during evaluation: `False`
 
 ## Interpretation limits

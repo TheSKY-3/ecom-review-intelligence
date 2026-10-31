@@ -411,6 +411,42 @@ def count_aspect_matches(
     return int(row[0])
 
 
+def category_aspect_totals(store_path: Path) -> dict[str, object]:
+    """Count every frozen aspect over the whole store, split by polarity.
+
+    The "matched" definition is the same frozen aspect predicate every run uses,
+    so the category overview and a single run's matched_count cannot drift apart.
+    The split applies the same polarity rule as every other surface.
+    """
+
+    with _open_sqlite(store_path) as connection:
+        metadata = dict(connection.execute("SELECT key, value FROM store_meta"))
+        aspect_terms = json.loads(metadata["aspect_terms"])
+        polarity_terms = json.loads(metadata["polarity_terms"])
+        total = int(connection.execute("SELECT COUNT(*) FROM reviews").fetchone()[0])
+        aspects: list[dict[str, object]] = []
+        for aspect in sorted(aspect_terms):
+            terms = list(aspect_terms[aspect])
+            predicate = " OR ".join("lower(text) LIKE ?" for _ in terms)
+            parameters = [f"%{term.lower()}%" for term in terms]
+            counts = {"supporting": 0, "opposing": 0, "conflicting": 0, "insufficient": 0}
+            matched = 0
+            for (text,) in connection.execute(
+                f"SELECT text FROM reviews WHERE {predicate}", parameters
+            ):
+                counts[_polarity(str(text), polarity_terms)] += 1
+                matched += 1
+            aspects.append(
+                {
+                    "aspect": aspect,
+                    "matched": matched,
+                    "coverage": (matched / total) if total else 0.0,
+                    "counts": counts,
+                }
+            )
+    return {"review_total": total, "aspects": aspects}
+
+
 _INSIGHT_SAMPLE_QUOTAS: tuple[tuple[str, int], ...] = (
     ("low", 2),
     ("high", 2),

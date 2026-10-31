@@ -52,6 +52,26 @@ class ProductView(_PublicModel):
     segment: str
 
 
+class CatalogItemView(_PublicModel):
+    """One selectable product; tier says how much evidence it can carry."""
+
+    code: str
+    label: str
+    segment: str
+    review_count: int = Field(ge=0)
+    tier: Literal["A", "B", "C"]
+
+
+class CatalogView(_PublicModel):
+    schema_version: Literal["p7-catalog-v1"] = "p7-catalog-v1"
+    total: int = Field(ge=0)
+    shown: int = Field(ge=0)
+    tiers: dict[str, int] = Field(default_factory=dict)
+    items: tuple[CatalogItemView, ...] = ()
+
+
+
+
 class EvidenceView(_PublicModel):
     evidence_alias: str
     product_code: str
@@ -113,6 +133,29 @@ class LexiconTotalsView(_PublicModel):
     opposing: int = Field(ge=0)
     conflicting: int = Field(ge=0)
     insufficient: int = Field(ge=0)
+
+
+class CategoryAspectView(_PublicModel):
+    """Whole-category counts for one frozen aspect."""
+
+    aspect: Aspect
+    label: str
+    coverage: float = Field(ge=0.0, le=1.0)
+    matched: int = Field(ge=0)
+    counts: LexiconTotalsView
+
+    @model_validator(mode="after")
+    def validate_counts_total(self) -> CategoryAspectView:
+        if self.counts.matched_count != self.matched:
+            raise ValueError("Category counts must add up to matched reviews.")
+        return self
+
+
+class CategoryView(_PublicModel):
+    schema_version: Literal["p7-category-v1"] = "p7-category-v1"
+    review_total: int = Field(ge=0)
+    product_total: int = Field(ge=0)
+    aspects: tuple[CategoryAspectView, ...] = ()
 
 
 class EvidenceRowView(_PublicModel):

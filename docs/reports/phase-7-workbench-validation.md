@@ -1,6 +1,7 @@
 # P7 B2B operations workbench validation
 
-Verified on 2026-08-15 in synthetic browser mode and controlled local-data mode.
+Verified on 2026-10-31 in synthetic browser mode and controlled local-data mode
+(earlier runs: 2026-08-15).
 
 ## Outcome
 
@@ -8,20 +9,36 @@ The loopback-only FastAPI/Jinja workbench completed the three intended operation
 tasks and one clarification/resume flow. Desktop `1440x900` and mobile `390x844`
 browser checks passed with no horizontal overflow, console errors, failed network
 responses, prohibited value shapes, or invalid element relationships. The browser
-summary is bound to source commit `8b94deccf10fa4c8f0749f0f6e43e111d11e11f9`,
-source SHA-256 `951399fbe790fd786b811595fc47f2fbec600d99e42b306a82d2c1d8540fa27c`,
-and `source_dirty=false`. Screenshots are stored in
-`docs/assets/p7-workbench-desktop.png` and `docs/assets/p7-workbench-mobile.png`.
+summary is bound to source commit `457dea7405a529b4d7e2f9f4135883b93269fbf8`,
+source SHA-256 `06b5e388249df4a6f45e9a1ce5cd4cb38f0abf2eb8e58aa4ece429dadb433197`,
+and a clean tracked worktree. Screenshots are stored in
+`docs/assets/p7-workbench-desktop.png` and `docs/assets/p7-workbench-mobile.png`;
+both were regenerated for the catalog / task / result layout.
 
 | Task | Workflow | Completion | First evidence | Status | Evidence |
 |---|---|---:|---:|---|---:|
-| SKU diagnosis | diagnosis | 21 ms | 21 ms | VERIFIED_RESULT | 1 |
-| Competitive evidence comparison | comparison | 24 ms | 24 ms | VERIFIED_RESULT | 2 |
-| Operations issue triage | triage | 28 ms | 28 ms | VERIFIED_RESULT | 2 |
+| SKU diagnosis | diagnosis | 48 ms | 48 ms | VERIFIED_RESULT | 1 |
+| Competitive evidence comparison | comparison | 26 ms | 26 ms | VERIFIED_RESULT | 2 |
+| Operations issue triage | triage | 44 ms | 44 ms | VERIFIED_RESULT | 2 |
 
 These timings are one automated developer browser run against an in-process local
 synthetic service. They are useful only as execution evidence, not as a latency SLA or
 proof that an operator works faster.
+
+## Real provider spot check (2026-10-31)
+
+Browser validation replays fixtures, so it cannot show whether the two model steps
+work against the real provider. Two paid calls were made separately through the local
+workbench to close that gap, with the API key read from the process environment only:
+
+- AI reading of one evidence card (p0004, 运行噪音): returned `READY` after reading
+  five review texts, with every quote checked verbatim and one model call.
+- One chat turn about the same run: returned an answer with ten statistics
+  references (matched, conflicting, opposing, insufficient, sample size) plus an
+  explicit "不能说什么" paragraph.
+
+This is a spot check, not an evaluation: two calls cannot estimate pass rates, and it
+says nothing about adoption or business impact.
 
 ## Security and state checks
 
@@ -49,7 +66,7 @@ service boundary, then invokes the existing P6 LangGraph, `ProductResolver`,
 aggregate P7 DTO fields. The reproducible private command completed diagnosis,
 comparison, and triage against the ignored real P4 SQLite store with
 `VERIFIED_RESULT`; aggregate evidence counts were 5, 10, and 5. The ignored receipt
-binds the run to a clean Git revision, the same 23-path source hash used by browser
+binds the run to a clean Git revision, the same source hash used by browser
 validation, and the dataset snapshot, evidence contract, and P6 config hashes. It records
 both the P6 graph/SQLite gate and public-response scan as passed. The adapter also wrote
 three ignored local sensitive trace records while validating the corresponding aggregate

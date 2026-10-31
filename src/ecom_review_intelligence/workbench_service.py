@@ -55,22 +55,31 @@ from ecom_review_intelligence.agent_tools import (
     ProductResolver,
 )
 from ecom_review_intelligence.agent_trace import append_local_trace, serialize_public_trace
+from ecom_review_intelligence.catalog import (
+    DEFAULT_CATALOG_LIMIT,
+    catalog_tier_totals,
+    load_catalog,
+)
 from ecom_review_intelligence.engine import (
     _polarity,
+    category_aspect_totals,
     query_stratified_aspect,
     verify_citation,
 )
 from ecom_review_intelligence.label_backfill import POLARITIES
 from ecom_review_intelligence.model_gateway import (
+    DEFAULT_OLLAMA_MODEL,
     ChatGateway,
     ChatToolStep,
     GatewayError,
     InsightGateway,
+    ModelProviderOverride,
     RequestBudget,
     build_chat_gateway,
     build_insight_gateway,
     default_model,
     model_options,
+    resolve_model_provider,
 )
 from ecom_review_intelligence.review_export import (
     BUCKET_LABELS,
@@ -78,6 +87,10 @@ from ecom_review_intelligence.review_export import (
     export_product_aspect,
 )
 from ecom_review_intelligence.workbench_contracts import (
+    CatalogItemView,
+    CatalogView,
+    CategoryAspectView,
+    CategoryView,
     ChatPointView,
     ChatStatsPointView,
     ChatStepView,
@@ -559,6 +572,7 @@ class P6BackedWorkbenchService(SyntheticWorkbenchService):
         user_chat_gateway_factory: Callable[[str, str], ChatGateway | None] | None = None,
         export_dir: Path | None = None,
         project_root: Path | None = None,
+        catalog_limit: int = DEFAULT_CATALOG_LIMIT,
         uuid_factory: Callable[[], UUID | str] = uuid4,
     ) -> None:
         super().__init__(uuid_factory=uuid_factory)
@@ -605,13 +619,80 @@ class P6BackedWorkbenchService(SyntheticWorkbenchService):
             else self._checkpoint_path.parent / "p7_workbench_verdicts.jsonl"
         )
         self._product_views_by_code = self._load_product_views()
+        self._catalog_limit = int(catalog_limit)
+        self._catalog_cache: CatalogView | None = None
+        self._category_cache: CategoryView | None = None
+        self._model_provider_override: ModelProviderOverride | None = None
+        self._model_provider_resolved = False
 
     def product_options(self) -> tuple[ProductView, ...]:
+        """Every exposed product, in catalog order (review count, descending)."""
+
         return tuple(
-            self._product_views_by_code.get(code, _LOCAL_PRODUCTS[code])
-            for code in _LOCAL_PRODUCTS
-            if code in self._product_ids_by_code
+            self._product_views_by_code.get(
+                code, _LOCAL_PRODUCTS.get(code, ProductView(code=code, label=code, segment=""))
+            )
+            for code in self._product_ids_by_code
         )
+
+    def catalog_view(self) -> CatalogView:
+        """Every exposed product with an explicit evidence tier.
+
+        A tier is not a quality claim: it says how many reviews the product can be
+        diagnosed from, which is what decides whether a per-product statement is
+        supportable at all. Computed once per process; the store is read-only.
+        """
+
+        if self._catalog_cache is None:
+            entries = load_catalog(self._store_path, limit=self._catalog_limit)
+            items = tuple(
+                CatalogItemView(
+                    code=entry.code,
+                    label=self._friendly_product_title(entry.title, entry.code),
+                    segment=f"{entry.review_count:,} 条评论 · {entry.tier} 档",
+                    review_count=entry.review_count,
+                    tier=entry.tier,
+                )
+                for entry in entries
+            )
+            self._catalog_cache = CatalogView(
+                total=self._product_total(),
+                shown=len(items),
+                tiers=catalog_tier_totals(self._store_path),
+                items=items,
+            )
+        return self._catalog_cache
+
+    def category_view(self) -> CategoryView:
+        """Whole-category aspect counts under the same frozen predicate as runs."""
+
+        if self._category_cache is None:
+            raw = category_aspect_totals(self._store_path)
+            aspects = tuple(
+                CategoryAspectView(
+                    aspect=str(item["aspect"]),
+                    label=_ASPECT_WORDING[str(item["aspect"])][0],
+                    coverage=round(float(item["coverage"]), 6),
+                    matched=int(item["matched"]),
+                    counts=LexiconTotalsView(
+                        matched_count=int(item["matched"]),
+                        **item["counts"],  # type: ignore[arg-type]
+                    ),
+                )
+                for item in raw["aspects"]  # type: ignore[union-attr]
+            )
+            self._category_cache = CategoryView(
+                review_total=int(raw["review_total"]),  # type: ignore[arg-type]
+                product_total=self._product_total(),
+                aspects=tuple(sorted(aspects, key=lambda view: view.coverage, reverse=True)),
+            )
+        return self._category_cache
+
+    def _product_total(self) -> int:
+        with sqlite3.connect(
+            f"file:{self._store_path.as_posix()}?mode=ro", uri=True
+        ) as connection:
+            return int(connection.execute("SELECT COUNT(*) FROM products").fetchone()[0])
 
     def _load_product_views(self) -> dict[str, ProductView]:
         product_ids = tuple(self._product_ids_by_code.values())
@@ -678,7 +759,10 @@ class P6BackedWorkbenchService(SyntheticWorkbenchService):
         return cleaned
 
     def _product_view(self, code: str) -> ProductView:
-        return self._product_views_by_code.get(code, _LOCAL_PRODUCTS[code])
+        view = self._product_views_by_code.get(code)
+        if view is not None:
+            return view
+        return _LOCAL_PRODUCTS[code]
 
     def _build_result(
         self, token: str, request: WorkbenchRunRequest, product_codes: tuple[str, ...]
@@ -934,14 +1018,42 @@ class P6BackedWorkbenchService(SyntheticWorkbenchService):
 
         return self.mode == "local" and self._insight_gateway_or_none() is not None
 
+    def _model_provider(self) -> ModelProviderOverride | None:
+        """Environment-selected endpoint, or None when the override is invalid."""
+
+        if not self._model_provider_resolved:
+            try:
+                self._model_provider_override = resolve_model_provider()
+            except ValueError:
+                self._model_provider_override = None
+            self._model_provider_resolved = True
+        return self._model_provider_override
+
+    def _local_provider_model(self) -> str | None:
+        override = self._model_provider()
+        if override is None or not override.is_ollama:
+            return None
+        return override.model or DEFAULT_OLLAMA_MODEL
+
     def insight_byo_available(self) -> bool:
         """True when a visitor may bring their own key for the opt-in step."""
 
+        if self._local_provider_model() is not None:
+            return False
         return self.mode == "local"
 
     def model_settings(self) -> dict[str, object]:
         """What the page may offer as selectable models, default first."""
 
+        local_model = self._local_provider_model()
+        if local_model is not None:
+            return {
+                "default": local_model,
+                "options": [
+                    {"id": local_model, "label": f"{local_model}（本机模型，无需密钥）"}
+                ],
+                "provider": "ollama",
+            }
         return {
             "default": default_model(self._config),
             "options": [
@@ -964,6 +1076,8 @@ class P6BackedWorkbenchService(SyntheticWorkbenchService):
     ) -> InsightGateway | None:
         """Use a visitor's key for this call only; never keep or cache it."""
 
+        if self._local_provider_model() is not None:
+            return self._insight_gateway_or_none()
         if user_key is None:
             if model is None or model == default_model(self._config):
                 return self._insight_gateway_or_none()
@@ -1152,6 +1266,8 @@ class P6BackedWorkbenchService(SyntheticWorkbenchService):
     ) -> ChatGateway | None:
         """Use a visitor's key for this turn only; never keep or cache it."""
 
+        if self._local_provider_model() is not None:
+            return self._chat_gateway_or_none()
         if user_key is None:
             if model is None or model == default_model(self._config):
                 return self._chat_gateway_or_none()
@@ -1302,9 +1418,14 @@ class P6BackedWorkbenchService(SyntheticWorkbenchService):
             f"{number_by_code.get(code, '?')}={label}"
             for code, label, _product_id in session.products
         )
+        catalog = self._product_catalog()
+        # The catalog can hold hundreds of products; the model only needs the most
+        # reviewed slice to talk about, while number->code lookup stays complete.
         catalog_lines = "; ".join(
-            f"{number}={label}" for number, _code, label in self._product_catalog()
+            f"{number}={label}" for number, _code, label in catalog[:40]
         )
+        if len(catalog) > 40:
+            catalog_lines += f"; 其余 {len(catalog) - 40} 个商品未列出"
         context = [
             (
                 "范围规则(必须遵守): 先核对问题是否落在『本运行覆盖』的维度和商品内;"

@@ -16,7 +16,7 @@
 下载 42 MB 的 exe 双击就能跑，不填 key 也能跑完诊断；填自己的 DeepSeek key 才启用「AI 深入分析」和对话助手。
 
 ![gate](https://img.shields.io/badge/%E5%B7%A5%E7%A8%8B%E9%97%A8-P0%E2%80%93P6%20PASSED-2F6B4F)
-![tests](https://img.shields.io/badge/tests-559%20passed-2F6B4F)
+![tests](https://img.shields.io/badge/tests-592%20passed-2F6B4F)
 ![desktop](https://img.shields.io/badge/Windows-exe%2042%20MB-3E6B96)
 ![python](https://img.shields.io/badge/Python-3.12-3E6B96)
 ![license](https://img.shields.io/badge/license-MIT-3E6B96)
@@ -44,6 +44,8 @@
 ![export matched reviews](docs/assets/p7-workbench-export.png)
 
 界面图用真实 Chrome 截自 `scripts/serve_demo.py --mode bundled` 的演示数据；对话图保留了问题与执行轨迹、裁掉了回答区，避免把评论原文带进公开仓库。
+
+> **2026-10-31 更新**：本地全量库暴露的商品从 3 个扩到 244 个（≥100 条评论的 A 档，覆盖全部评论的 74.3%），并新增类目基线（八个方面在全类目 136,604 条评论里的支持/反对/冲突/不足计数）。界面相应改成「商品目录 / 任务 / 结果」三栏，原来的「覆盖率」改名为「抽样比例」，口径不变（样本数 ÷ 匹配数）。上面几张界面图拍摄于两栏版本，功能相同、布局不同；仓库自带的演示库仍是 3 个商品，244 个只在本机全量库生效。两条模型步骤也不再绑死 DeepSeek：设 `ECOM_MODEL_PROVIDER=ollama` 可指向任意 OpenAI 兼容端点，本机小模型的实测结论见 `docs/engineering-readme.md`。
 
 ## 我做了什么（一个人，从数据链路到桌面打包）
 

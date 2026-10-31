@@ -5,9 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="color-scheme" content="light dark">
     <title>ECom Review Intelligence</title>
-    <script src="/static/workbench-theme.js?v=20261029d"></script>
-    <link rel="stylesheet" href="/static/workbench.css?v=20261029d">
-    <script src="/static/workbench.js?v=20261029d" defer></script>
+    <script src="/static/workbench-theme.js?v=20261031b"></script>
+    <link rel="stylesheet" href="/static/workbench.css?v=20261031b">
+    <script src="/static/workbench.js?v=20261031b" defer></script>
   </head>
   <body>
     <header class="topbar">
@@ -19,63 +19,49 @@
         </div>
       </div>
       <div class="topbar-tools">
-        <div class="mode-chip"><span aria-hidden="true"></span>
-          {% if mode == "local" %}本地评论数据{% else %}演示数据{% endif %}
-        </div>
-        {% if insight_byo %}
-        <button class="settings-toggle" id="settings-toggle" type="button" aria-haspopup="dialog">模型设置<span class="settings-model-label" id="settings-model-label"></span></button>
-        {% endif %}
-        <button class="theme-toggle" id="theme-toggle" type="button">深色</button>
+        <div class="mode-chip"><span aria-hidden="true"></span>{% if mode == "local" %}本地评论数据{% else %}演示数据{% endif %}</div>
+        <details class="more-menu">
+          <summary>更多</summary>
+          <div class="more-panel">
+            {% if insight_byo %}
+            <button class="more-item settings-toggle" id="settings-toggle" type="button" aria-haspopup="dialog">模型设置<span class="settings-model-label" id="settings-model-label"></span></button>
+            {% endif %}
+            <button class="more-item" id="theme-toggle" type="button">深色</button>
+          </div>
+        </details>
       </div>
     </header>
 
-    <main class="workspace {% if mode == 'local' %}chat-first{% endif %}" data-insight-available="{{ 'true' if insight_available else 'false' }}" data-insight-byo="{{ 'true' if insight_byo else 'false' }}">
-      <nav class="workflow-nav" aria-label="工作流">
-        <p class="section-label">工作流</p>
-        <button class="workflow-button is-active" type="button" data-workflow="diagnosis">
-          <span class="workflow-index">01</span>
-          <span><strong>商品评价诊断</strong><small>看一个商品</small></span>
-        </button>
-        <button class="workflow-button" type="button" data-workflow="comparison">
-          <span class="workflow-index">02</span>
-          <span><strong>商品评价对比</strong><small>比较多个商品</small></span>
-        </button>
-        <button class="workflow-button" type="button" data-workflow="triage">
-          <span class="workflow-index">03</span>
-          <span><strong>问题优先级</strong><small>决定先查什么</small></span>
-        </button>
-
-        <div class="boundary-note">
-          <span>{% if mode == "local" %}本地模式{% else %}演示数据{% endif %}</span>
-          <p>{% if mode == "local" %}只使用本地评论数据{% else %}使用演示评论数据{% endif %}</p>
-          <p>不代表缺陷率或业务效果</p>
+    <main class="workspace" data-insight-available="{{ 'true' if insight_available else 'false' }}" data-insight-byo="{{ 'true' if insight_byo else 'false' }}">
+      <aside class="catalog-column" aria-label="商品目录">
+        <div class="catalog-head">
+          <p class="section-label">商品目录</p>
+          <span class="catalog-count" id="catalog-count"></span>
         </div>
-      </nav>
-
-      {% if mode == "local" %}
-      <section class="chat-column" aria-label="智能体问答">
-        <header class="chat-head">
-          <div>
-            <strong>智能体问答</strong>
-            <span id="chat-run-hint">先「开始分析」,再在这里提问</span>
-          </div>
-        </header>
-        <div class="chat-scroll" id="chat-scroll" aria-live="polite">
-          <div class="chat-empty" id="chat-empty">
-            <p>对着当前运行提问,也可以让智能体直接发起一次新分析(换商品、换维度)。回答只来自证据卡样本和白名单统计:每条引用逐字校验,正文里的阿拉伯数字逐个对照当次读到的评论和查询结果,不过就整条丢弃。</p>
-            <div class="chat-chips" id="chat-chips"></div>
-          </div>
+        <div class="catalog-tools" id="catalog-tools" hidden>
+          <label class="catalog-search">
+            <span class="visually-hidden">搜索商品</span>
+            <input id="catalog-search" type="search" placeholder="搜索商品名或编号" autocomplete="off" spellcheck="false">
+          </label>
+          <div class="tier-filter" id="tier-filter" role="group" aria-label="按评论量档位筛选"></div>
         </div>
-        <form class="chat-composer" id="qa-form">
-          <textarea class="chat-input" id="qa-input" rows="1" maxlength="500"
-                    placeholder="问一个这批评论里的问题…(回车发送,Shift+回车换行)"></textarea>
-          <button class="chat-send" id="chat-send" type="submit" aria-label="发送">↑</button>
-        </form>
-        <p class="chat-foot">智能体有三张牌:读证据卡评论样本、查白名单统计、发起新运行(只能从固定商品目录里选,选完旧对话的引用全部作废)。每轮最多 4 次查询,一个运行最多 8 轮对话。</p>
-      </section>
-      {% endif %}
+        <fieldset class="product-fieldset">
+          <legend class="visually-hidden">选择待分析商品</legend>
+          <div class="product-option-list" id="product-option-list">
+            {% for product in products %}
+            <label class="product-option">
+              <input type="checkbox" name="product" value="{{ product.code }}" data-label="{{ product.label }}" data-segment="{{ product.segment }}" {% if loop.first %}checked{% endif %}>
+              <span><strong>{{ product.label }}</strong><small>{{ product.segment }}</small></span>
+            </label>
+            {% endfor %}
+          </div>
+          <p class="catalog-empty" id="catalog-empty" hidden>没有匹配的商品。</p>
+          <button class="catalog-more" id="catalog-more" type="button" hidden></button>
+        </fieldset>
+        <p class="catalog-foot">可多选 · 对比模式建议选 2 个以上</p>
+      </aside>
 
-      <section class="result-column" id="result-panel" aria-live="polite">
+      <section class="task-column" aria-label="本次任务">
         <div class="section-heading">
           <div>
             <p class="section-label">当前任务</p>
@@ -84,23 +70,25 @@
           <span class="task-code" id="task-code">商品诊断</span>
         </div>
 
-        <form id="run-form" novalidate>
-          <fieldset class="product-fieldset">
-            <legend>选择待分析商品</legend>
-            <p class="field-help">
-              {% if mode == "local" %}已根据评论数量预选商品, 可勾选需要分析的对象。预选仅用于方便取样, 不代表商品排名或优劣。{% else %}演示目录{% endif %}
-            </p>
-            {% for product in products %}
-            <label class="product-option">
-              <input type="checkbox" name="product" value="{{ product.code }}" data-label="{{ product.label }}" {% if loop.first %}checked{% endif %}>
-              <span><strong>{{ product.label }}</strong><small>{{ product.segment }}</small></span>
-            </label>
-            {% endfor %}
-          </fieldset>
+        <nav class="workflow-nav" aria-label="工作流">
+          <button class="workflow-button is-active" type="button" data-workflow="diagnosis">
+            <span class="workflow-index">01</span>
+            <strong>商品评价诊断</strong>
+          </button>
+          <button class="workflow-button" type="button" data-workflow="comparison">
+            <span class="workflow-index">02</span>
+            <strong>商品评价对比</strong>
+          </button>
+          <button class="workflow-button" type="button" data-workflow="triage">
+            <span class="workflow-index">03</span>
+            <strong>问题优先级</strong>
+          </button>
+        </nav>
 
+        <form id="run-form" novalidate>
           <div class="form-grid">
             <label>
-              <span>想重点分析什么问题?</span>
+              <span>分析维度</span>
               <select id="aspect" name="aspect">
                 <option value="noise">运行噪音</option>
                 <option value="reliability">可靠性</option>
@@ -113,9 +101,8 @@
               </select>
             </label>
             <label>
-              <span>本次想重点确认什么?</span>
+              <span>关注的问题</span>
               <textarea id="question" name="question" rows="3">评论中有哪些关于运行噪音的问题值得优先处理？</textarea>
-              <small class="field-help question-help">用于记录本次分析目的, 分析范围由上方商品和问题主题决定。</small>
             </label>
           </div>
 
@@ -126,6 +113,38 @@
             </button>
           </div>
         </form>
+
+        {% if mode == "local" %}
+        <section class="chat-column" aria-label="智能体问答">
+          <header class="chat-head">
+            <div>
+              <strong>智能体问答</strong>
+              <span id="chat-run-hint">先「开始分析」，再在这里提问</span>
+            </div>
+          </header>
+          <div class="chat-scroll" id="chat-scroll" aria-live="polite">
+            <div class="chat-empty" id="chat-empty">
+              <p>针对当前运行提问：可以问具体评论，也可以让智能体换商品重跑一次。</p>
+              <div class="chat-chips" id="chat-chips"></div>
+            </div>
+          </div>
+          <form class="chat-composer" id="qa-form">
+            <textarea class="chat-input" id="qa-input" rows="1" maxlength="500"
+                      placeholder="问一个这批评论里的问题…"></textarea>
+            <button class="chat-send" id="chat-send" type="submit" aria-label="发送">↑</button>
+          </form>
+        </section>
+        {% endif %}
+      </section>
+
+      <section class="result-column" id="result-panel" aria-live="polite">
+        <section class="category-card" id="category-card" hidden>
+          <div class="card-head">
+            <strong>类目维度概览</strong>
+            <span id="category-meta"></span>
+          </div>
+          <div class="category-list" id="category-list"></div>
+        </section>
 
         <div class="result-header">
           <div>
@@ -138,7 +157,51 @@
           </span>
         </div>
 
-        <div class="next-action">
+        <section class="signal-card" id="signal-card" aria-label="信号分布" hidden>
+          <div class="card-head">
+            <strong>信号分布</strong>
+            <button class="info-dot" id="signal-info" type="button" aria-expanded="false" aria-controls="signal-info-text" aria-label="信号分布说明" title="词表匹配计数，可点开原文逐条核对">i</button>
+          </div>
+          <p class="signal-info" id="signal-info-text" hidden>词表匹配计数，可点开原文逐条核对。</p>
+          <div class="signal-stack" role="img" aria-label="支持、反对、冲突、证据不足四类占比">
+            <i class="signal-seg supporting" id="seg-supporting"></i>
+            <i class="signal-seg opposing" id="seg-opposing"></i>
+            <i class="signal-seg conflicting" id="seg-conflicting"></i>
+            <i class="signal-seg insufficient" id="seg-insufficient"></i>
+          </div>
+          <dl class="signal-figures">
+            <div><dt>匹配评论</dt><dd id="matched-count">0</dd></div>
+            <div class="signal-counts"><dt>四类计数</dt><dd id="signal-counts">支持 0 · 反对 0 · 冲突 0 · 不足 0</dd></div>
+            <div><dt>抽样比例</dt><dd id="coverage-value">0%</dd></div>
+          </dl>
+          <details class="detail-block" id="signal-detail">
+            <summary>明细</summary>
+            <div class="detail-body">
+              <div class="coverage-row">
+                <div class="coverage-meta">
+                  <span>展示样本 <strong id="evidence-count">0</strong> 条</span>
+                  <span id="coverage-label">匹配评论 0 条</span>
+                </div>
+                <div class="coverage-track" aria-label="抽样比例"><i id="coverage-bar"></i></div>
+              </div>
+              <div class="lexicon-block" id="lexicon-block" hidden>
+                <div class="detail-subhead"><span>全量词表计数</span><span id="lexicon-matched"></span></div>
+                <div class="lexicon-grid">
+                  <div><span>支持</span><strong id="lexicon-supporting">0</strong></div>
+                  <div><span>反对</span><strong id="lexicon-opposing">0</strong></div>
+                  <div><span>冲突</span><strong id="lexicon-conflicting">0</strong></div>
+                  <div><span>不足</span><strong id="lexicon-insufficient">0</strong></div>
+                </div>
+                <p class="detail-note" id="lexicon-note" hidden></p>
+              </div>
+              <div class="detail-subhead"><span>按商品查看</span></div>
+              <div class="product-signal-list" id="product-signal-visual"></div>
+              <p class="detail-note blind-spot-note" id="blind-spot-note" hidden></p>
+            </div>
+          </details>
+        </section>
+
+        <div class="next-action" id="next-action-block" hidden>
           <div class="next-action-main">
             <span>下一步</span>
             <p id="next-action">提交后显示内部核查建议。</p>
@@ -146,65 +209,30 @@
           {% if mode == "local" %}<p class="kbd-hint"><kbd>j</kbd>/<kbd>k</kbd> 选卡 · <kbd>回车</kbd> 展开原文</p>{% endif %}
         </div>
 
-        <p class="result-summary" id="result-summary">选择任务和商品后, 点击“开始分析”。</p>
+        <div id="workflow-output"></div>
+        <p class="review-progress" id="review-progress" hidden></p>
+        <p class="verdict-notice" id="verdict-notice" hidden></p>
+        <div class="evidence-list" id="evidence-list"></div>
 
-        <div class="metric-strip">
-          <div><span>匹配评论</span><strong id="matched-count">0</strong></div>
-          <div><span>抽样凭证</span><strong id="evidence-count">0</strong></div>
-          <div><span>模式</span><strong id="workbench-mode">{{ mode|upper }}</strong></div>
-          <div><span>安全降级</span><strong id="degraded-value">未触发</strong></div>
-          <div><span>运行</span><strong id="run-alias">PENDING</strong></div>
-        </div>
+        <details class="more-block" id="run-summary">
+          <summary>运行摘要</summary>
+          <dl class="run-meta">
+            <div><dt>模式</dt><dd><strong id="workbench-mode">{{ mode|upper }}</strong></dd></div>
+            <div><dt>安全降级</dt><dd id="degraded-value">未触发</dd></div>
+            <div><dt>运行</dt><dd id="run-alias">PENDING</dd></div>
+          </dl>
+        </details>
 
-        <section class="visual-block">
-          <div class="visual-heading"><strong>抽样凭证的信号分布(逐字可核对)</strong><span id="signal-scope-label">抽样,不是统计结论</span></div>
-          <div class="signal-visual" aria-label="证据信号概览">
-          <div><span id="label-supporting">支持 · 0</span><i class="signal-bar supporting" id="bar-supporting"></i></div>
-          <div><span id="label-opposing">反对 · 0</span><i class="signal-bar opposing" id="bar-opposing"></i></div>
-          <div><span id="label-conflicting">冲突 · 0</span><i class="signal-bar conflicting" id="bar-conflicting"></i></div>
-          <div><span id="label-insufficient">信息不足 · 0</span><i class="signal-bar insufficient" id="bar-insufficient"></i></div>
-          </div>
-        </section>
-        <section class="visual-block coverage-block">
-          <div class="visual-heading"><strong>证据覆盖</strong><span id="coverage-label">匹配评论 0 · 展示样本 0</span></div>
-          <div class="coverage-track" aria-label="证据覆盖率"><i id="coverage-bar"></i></div>
-          <p id="coverage-note">覆盖率 = 展示样本 / 匹配评论, 用于说明抽样范围, 不是置信度。</p>
-        </section>
-        <section class="visual-block">
-          <div class="visual-heading"><strong>按商品查看</strong><span>各商品独立统计</span></div>
-          <div class="product-signal-list" id="product-signal-visual"></div>
-        </section>
         {% if mode == "local" %}
-        <section class="visual-block" id="export-block" hidden>
-          <div class="visual-heading"><strong>导出这批评论</strong><span>CSV · 含评论原文 · 只存本机</span></div>
+        <details class="more-block" id="export-block" hidden>
+          <summary>导出这批评论</summary>
           <div class="export-controls">
             <select id="export-product" aria-label="选择要导出的商品"></select>
             <button type="button" id="export-button" class="export-copy">导出 CSV</button>
           </div>
           <div class="export-output" id="export-output"></div>
-          <p class="insight-footnote">导出该商品在这个方面下的全部匹配评论(含「参与本次判断」标记与三列人工标注位),不调用模型、不需要密钥。文件含评论原文,只用于人工标注,不要提交进版本库。</p>
-        </section>
+        </details>
         {% endif %}
-        <section class="visual-block lexicon-block" id="lexicon-block" hidden>
-          <div class="visual-heading"><strong>全量词表粗筛</strong><span>全部匹配评论 · 未逐条核对</span></div>
-          <div class="metric-strip lexicon-strip">
-            <div><span>支持</span><strong id="lexicon-supporting">0</strong></div>
-            <div><span>反对</span><strong id="lexicon-opposing">0</strong></div>
-            <div><span>冲突</span><strong id="lexicon-conflicting">0</strong></div>
-            <div><span>判不出</span><strong id="lexicon-insufficient">0</strong></div>
-          </div>
-          <p class="lexicon-note" id="lexicon-note"></p>
-        </section>
-        <p class="signal-caveat">机器判定提示:方向按词表匹配,可能误判(例如 “Not easy to clean” 因含 easy 被计为支持);下结论前请逐条核对证据原文。</p>
-        {% if mode == "local" %}
-        <p class="signal-caveat insight-caveat">AI 深入分析是可选步骤:默认不联网、不花费;点开某张证据卡的按钮后,才会读取该方面 5 条评论原文并调用 1 次模型。AI 只负责说清评论里写了什么,不判断证据够不够。如果本站没有配置密钥,会请你填入自己的 DeepSeek API Key:它只存在当前标签页、关闭即清除,只用于这次分析,不会写进日志或磁盘。</p>
-        {% endif %}
-        <p class="signal-caveat blind-spot-note" id="blind-spot-note" hidden></p>
-
-        <div id="workflow-output"></div>
-        <p class="review-progress" id="review-progress" hidden></p>
-        <p class="verdict-notice" id="verdict-notice" hidden></p>
-        <div class="evidence-list" id="evidence-list"></div>
       </section>
     </main>
 
@@ -214,12 +242,12 @@
         <h2 class="settings-title" id="settings-title">模型设置</h2>
         <p class="settings-status" id="settings-status"></p>
         <label class="settings-field">
-          <span>DeepSeek API Key</span>
+          <span>自己的 DeepSeek API Key</span>
           <input class="settings-input" id="settings-key" type="password" autocomplete="off" spellcheck="false" placeholder="sk-...">
         </label>
         <label class="settings-check">
           <input id="settings-remember" type="checkbox">
-          <span>在这台电脑上记住(不勾选就只存当前标签页,关闭即忘)</span>
+          <span>在这台电脑上记住（不勾选则关闭标签页后失效）</span>
         </label>
         <label class="settings-field">
           <span>模型</span>
@@ -234,7 +262,7 @@
           <button class="settings-secondary" id="settings-clear" type="button">清除密钥</button>
           <button class="settings-secondary" id="settings-close" type="button">关闭</button>
         </div>
-        <p class="settings-note" id="settings-note">密钥只存在这个浏览器里,只发往本机服务;不会写进日志或磁盘。换模型后,同一个问题可能得到不同结论。</p>
+        <p class="settings-note" id="settings-note">密钥只存在本机浏览器，只发往本机服务。</p>
       </form>
     </dialog>
     {% endif %}

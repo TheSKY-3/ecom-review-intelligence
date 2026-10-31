@@ -18,6 +18,8 @@ from fastapi.templating import Jinja2Templates
 
 from ecom_review_intelligence.model_gateway import normalize_request_key, normalize_request_model
 from ecom_review_intelligence.workbench_contracts import (
+    CatalogView,
+    CategoryView,
     ChatRequest,
     ChatTurnView,
     EvidenceDetail,
@@ -348,6 +350,26 @@ def create_workbench_app(
                 "model_settings": model_settings,
             },
         )
+
+    @app.get("/api/v1/catalog", response_model=CatalogView)
+    def catalog() -> CatalogView | JSONResponse:
+        """Selectable products with explicit evidence tiers (read-only, no model)."""
+
+        if backend.mode != "local" or not hasattr(backend, "catalog_view"):
+            return _error(404, "CATALOG_UNAVAILABLE", "The local catalog is not available.")
+        view = backend.catalog_view()  # type: ignore[attr-defined]
+        assert_public_workbench_safe(view.model_dump(mode="json"))
+        return view
+
+    @app.get("/api/v1/category", response_model=CategoryView)
+    def category() -> CategoryView | JSONResponse:
+        """Whole-category aspect counts; computed once per process."""
+
+        if backend.mode != "local" or not hasattr(backend, "category_view"):
+            return _error(404, "CATEGORY_UNAVAILABLE", "The local category view is not available.")
+        view = backend.category_view()  # type: ignore[attr-defined]
+        assert_public_workbench_safe(view.model_dump(mode="json"))
+        return view
 
     @app.get("/favicon.ico", include_in_schema=False, status_code=204)
     def favicon() -> Response:

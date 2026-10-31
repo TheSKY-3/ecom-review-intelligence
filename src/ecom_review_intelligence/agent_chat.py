@@ -179,7 +179,7 @@ class ExportReviewsArgs(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    product_number: int = Field(ge=1, le=32)
+    product_number: int = Field(ge=1, le=400)
 
 
 class CreateRunArgs(BaseModel):

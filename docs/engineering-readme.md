@@ -103,6 +103,27 @@ boundary, and committed report pair. For the committed P6 live artifact pair, th
 audit returns `READY_TO_CLOSE_P6`; any source, evidence, or evaluation change requires
 the gate and audit to be rerun.
 
+## Optional local model endpoint
+
+The two model-backed workbench steps speak the OpenAI chat-completions protocol, so a
+local server can stand in for the provider without touching application code:
+
+~~~powershell
+$env:ECOM_MODEL_PROVIDER="ollama"
+$env:ECOM_MODEL_BASE_URL="http://127.0.0.1:11435/v1"
+$env:ECOM_MODEL_NAME="qwen3.5-2b"
+$env:ECOM_MODEL_API_KEY="local"
+~~~
+
+`scripts/serve_local_model.py` wraps a Hugging Face checkpoint in exactly that
+endpoint. It must run under that checkpoint's own torch environment, because this
+repository never imports torch. Measured on 2026-10-31 with a 2B checkpoint: 3.6 s to
+load, 4.2 GB of GPU memory, 15–27 s per forced tool call. Both local checkpoints tried
+(Qwen3.5-2B and a 4B Ollama model) failed the verifier on at least one of: schema field
+names, the 200-character quote limit, or citing a review the same answer had marked
+irrelevant. The verifier was not relaxed, so the local path stays a measurement aid
+rather than a supported production path.
+
 ## P7 operations workbench
 
 The P7 workbench is a loopback-only B2B operations prototype. It opens directly on
@@ -126,6 +147,15 @@ reuses the P6 graph, SQLite evidence tool, verifier, and citation checks:
 .\.venv\Scripts\python.exe scripts\run_phase7_local_regression.py --project-root .
 .\.venv\Scripts\python.exe scripts\run_phase7_workbench.py --mode local --acknowledge-local-data --project-root . --port 8765
 ~~~
+
+The local adapter exposes the Tier-A slice of the frozen catalog through
+`GET /api/v1/catalog`: 244 products with at least 100 reviews, 74.3% of all ice-maker
+reviews in the full local store. `GET /api/v1/category` returns whole-category aspect
+counts (136,604 reviews, eight frozen aspects, support/oppose/conflict/insufficient per
+aspect) as the baseline a single product's five-card sample cannot provide. Neither
+endpoint returns ASINs, review text, evidence IDs, or paths, and every listed product
+runs through the same P6 graph and verifier. The bundled three-product demo store
+therefore reports three products, not 244.
 
 The regression detail stays under ignored `artifacts/evals/`; stdout contains only a
 fixed status and workflow count. Local mode does not call DeepSeek or display private

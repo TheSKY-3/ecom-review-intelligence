@@ -31,6 +31,7 @@ _WORKBENCH_SOURCE_PATHS = (
     "src/ecom_review_intelligence/agent_graph.py",
     "src/ecom_review_intelligence/agent_policy.py",
     "src/ecom_review_intelligence/agent_tools.py",
+    "src/ecom_review_intelligence/catalog.py",
     "src/ecom_review_intelligence/engine.py",
     "src/ecom_review_intelligence/model_gateway.py",
     "src/ecom_review_intelligence/workbench_cli.py",

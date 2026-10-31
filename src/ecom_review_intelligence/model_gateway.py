@@ -262,6 +262,155 @@ def _draft_tool_schema(
     return schema
 
 
+MODEL_PROVIDER_ENV = "ECOM_MODEL_PROVIDER"
+MODEL_BASE_URL_ENV = "ECOM_MODEL_BASE_URL"
+MODEL_NAME_ENV = "ECOM_MODEL_NAME"
+MODEL_API_KEY_ENV = "ECOM_MODEL_API_KEY"
+
+DEFAULT_MODEL_PROVIDER = "deepseek"
+OLLAMA_MODEL_PROVIDER = "ollama"
+DEFAULT_OLLAMA_BASE_URL = "http://127.0.0.1:11434/v1"
+DEFAULT_OLLAMA_MODEL = "qwen3:4b"
+DEFAULT_OLLAMA_API_KEY = "ollama"
+
+
+@dataclass(frozen=True)
+class ModelProviderOverride:
+    """Environment-selected model endpoint.
+
+    Every field stays None until an ECOM_MODEL_* variable is set, so the
+    frozen DeepSeek configuration keeps being used by default. Ollama is
+    opt-in through ECOM_MODEL_PROVIDER=ollama.
+    """
+
+    provider: str = DEFAULT_MODEL_PROVIDER
+    base_url: str | None = None
+    model: str | None = None
+    api_key: str | None = None
+
+    @property
+    def is_ollama(self) -> bool:
+        return self.provider == OLLAMA_MODEL_PROVIDER
+
+
+def resolve_model_provider(
+    environment: Mapping[str, str] | None = None,
+) -> ModelProviderOverride:
+    """Read the override variables; nothing set means the frozen config.
+
+    An unknown provider fails closed instead of silently calling DeepSeek, and
+    the error message never echoes the rejected value.
+    """
+
+    env = os.environ if environment is None else environment
+    provider = (env.get(MODEL_PROVIDER_ENV) or "").strip().lower() or DEFAULT_MODEL_PROVIDER
+    if provider not in (DEFAULT_MODEL_PROVIDER, OLLAMA_MODEL_PROVIDER):
+        raise ValueError("Unsupported model provider override.")
+    base_url = (env.get(MODEL_BASE_URL_ENV) or "").strip() or None
+    model = (env.get(MODEL_NAME_ENV) or "").strip() or None
+    api_key = (env.get(MODEL_API_KEY_ENV) or "").strip() or None
+    if provider == OLLAMA_MODEL_PROVIDER:
+        base_url = base_url or DEFAULT_OLLAMA_BASE_URL
+        model = model or DEFAULT_OLLAMA_MODEL
+        api_key = api_key or DEFAULT_OLLAMA_API_KEY
+    return ModelProviderOverride(
+        provider=provider, base_url=base_url, model=model, api_key=api_key
+    )
+
+
+def _redirect_client(client: Any, *, base_url: str | None, api_key: str | None) -> None:
+    """Point an already-built compatible client at another endpoint.
+
+    The SDK reads base_url and api_key afresh when it builds every request, so
+    assigning them here redirects all later calls. A client that cannot be
+    redirected fails closed rather than quietly reaching the frozen DeepSeek
+    endpoint.
+    """
+
+    if base_url is None and api_key is None:
+        return
+    try:
+        if base_url is not None:
+            client.base_url = base_url
+        if api_key is not None:
+            client.api_key = api_key
+    except (AttributeError, TypeError, ValueError) as error:
+        raise ValueError("The model client cannot use the configured provider.") from error
+
+
+def _provider_request_options(provider: str) -> dict[str, Any]:
+    """Turn thinking off in the way each provider understands.
+
+    DeepSeek takes an extra_body flag; Ollama turns thinking off through
+    reasoning_effort and reports reasoning separately. Neither provider is
+    sent the other provider's field.
+    """
+
+    if provider == OLLAMA_MODEL_PROVIDER:
+        return {"reasoning_effort": "none"}
+    return {"extra_body": {"thinking": {"type": "disabled"}}}
+
+
+_THINKING_BLOCK = re.compile(
+    r"<\s*(?:thinking|think|thought|reasoning)\s*>.*?<\s*/\s*(?:thinking|think|thought|reasoning)\s*>",
+    re.IGNORECASE | re.DOTALL,
+)
+_THINKING_CLOSE_TAG = re.compile(
+    r"<\s*/\s*(?:thinking|think|thought|reasoning)\s*>", re.IGNORECASE
+)
+_THINKING_OPEN_TAG = re.compile(
+    r"<\s*(?:thinking|think|thought|reasoning)\s*>", re.IGNORECASE
+)
+
+
+def _strip_thinking_blocks(text: Any) -> Any:
+    """Drop a reasoning block a local model may wrap around its JSON."""
+
+    if not isinstance(text, str):
+        return text
+    cleaned = _THINKING_BLOCK.sub("", text)
+    closes = list(_THINKING_CLOSE_TAG.finditer(cleaned))
+    if closes:
+        # Everything up to the last closing tag was reasoning.
+        cleaned = cleaned[closes[-1].end() :]
+    cleaned = _THINKING_OPEN_TAG.sub("", cleaned)
+    return cleaned.strip()
+
+
+def _loads_model_json(text: Any) -> Any:
+    """Parse model JSON, retrying after reasoning markup is stripped.
+
+    A valid payload is never rewritten, so a quote or note that happens to
+    contain a thinking tag cannot be corrupted. Both attempts keep the
+    caller's existing MODEL_OUTPUT_INVALID error contract.
+    """
+
+    try:
+        return json.loads(text)
+    except (TypeError, json.JSONDecodeError):
+        cleaned = _strip_thinking_blocks(text)
+        if cleaned == text:
+            raise
+        return json.loads(cleaned)
+
+
+def _clean_tool_arguments(raw: Any) -> Any:
+    """Drop reasoning markup only when the raw argument text is not JSON.
+
+    Valid JSON is never rewritten, so a quote that happens to contain a
+    thinking tag keeps its exact characters. A wrapped argument is unwrapped
+    before the tool executor or the submit parser sees it.
+    """
+
+    if not isinstance(raw, str):
+        return raw
+    try:
+        json.loads(raw)
+    except (TypeError, json.JSONDecodeError):
+        return _strip_thinking_blocks(raw)
+    return raw
+
+
 class DeepSeekModelGateway:
     def __init__(
         self,
@@ -271,12 +420,16 @@ class DeepSeekModelGateway:
         model: str = "deepseek-v4-flash",
         max_output_tokens: int = 1200,
         request_timeout_seconds: int = 30,
+        environment: Mapping[str, str] | None = None,
     ) -> None:
         if getattr(client, "max_retries", 0) != 0:
             raise ValueError("DeepSeek client automatic retries must be disabled.")
+        settings = resolve_model_provider(environment)
+        _redirect_client(client, base_url=settings.base_url, api_key=settings.api_key)
         self.client = client
         self.budget = budget
-        self.model = model
+        self.provider = settings.provider
+        self.model = settings.model or model
         self.max_output_tokens = max_output_tokens
         self.request_timeout_seconds = request_timeout_seconds
         self.records: list[ModelCallRecord] = []
@@ -313,7 +466,7 @@ class DeepSeekModelGateway:
             function = tool_calls[0].function
             if function.name != "submit_agent_plan":
                 raise ValueError("unexpected tool")
-            return AgentPlan.model_validate(json.loads(function.arguments))
+            return AgentPlan.model_validate(_loads_model_json(function.arguments))
         except (AttributeError, IndexError, TypeError, ValueError, json.JSONDecodeError, ValidationError) as error:
             self._mark_last_semantic_failure()
             raise GatewayError("MODEL_OUTPUT_INVALID", "Model plan output is invalid.") from error
@@ -378,7 +531,7 @@ class DeepSeekModelGateway:
             function = tool_calls[0].function
             if function.name != "submit_agent_draft":
                 raise ValueError("unexpected tool")
-            return AgentDraft.model_validate(json.loads(function.arguments))
+            return AgentDraft.model_validate(_loads_model_json(function.arguments))
         except (AttributeError, IndexError, TypeError, ValueError, json.JSONDecodeError, ValidationError) as error:
             self._mark_last_semantic_failure()
             raise GatewayError("MODEL_OUTPUT_INVALID", "Model draft output is invalid.") from error
@@ -399,7 +552,7 @@ class DeepSeekModelGateway:
                 temperature=0,
                 max_tokens=self.max_output_tokens,
                 timeout=self.request_timeout_seconds,
-                extra_body={"thinking": {"type": "disabled"}},
+                **_provider_request_options(self.provider),
                 **request,
             )
         except Exception as error:
@@ -516,10 +669,12 @@ class DeepSeekInsightGateway:
         model: str = "deepseek-v4-flash",
         max_output_tokens: int = 900,
         request_timeout_seconds: int = 30,
+        provider: str = DEFAULT_MODEL_PROVIDER,
     ) -> None:
         if getattr(client, "max_retries", 0) != 0:
             raise ValueError("DeepSeek client automatic retries must be disabled.")
         self.client = client
+        self.provider = provider
         self.model = model
         self.max_output_tokens = max_output_tokens
         self.request_timeout_seconds = request_timeout_seconds
@@ -532,7 +687,7 @@ class DeepSeekInsightGateway:
                 temperature=0,
                 max_tokens=self.max_output_tokens,
                 timeout=self.request_timeout_seconds,
-                extra_body={"thinking": {"type": "disabled"}},
+                **_provider_request_options(self.provider),
                 messages=[
                     {"role": "system", "content": INSIGHT_SYSTEM_PROMPT},
                     {
@@ -565,7 +720,7 @@ class DeepSeekInsightGateway:
             function = tool_calls[0].function
             if function.name != "submit_insight":
                 raise ValueError("unexpected tool")
-            return InsightDraft.model_validate(json.loads(function.arguments))
+            return InsightDraft.model_validate(_loads_model_json(function.arguments))
         except (
             AttributeError,
             IndexError,
@@ -664,6 +819,41 @@ def _provider_failure_code(error: Exception) -> str:
     return "API_UNAVAILABLE"
 
 
+def _gateway_connection(
+    config: Mapping[str, Any],
+    settings: ModelProviderOverride,
+    env: Mapping[str, str],
+    *,
+    api_key: str | None,
+    model: str | None,
+) -> tuple[str, str, str] | None:
+    """Resolve one gateway's key, endpoint, and model; None means unkeyed.
+
+    With the default provider the precedence is unchanged except that an
+    explicit ECOM_MODEL_API_KEY wins. The Ollama path never needs a DeepSeek
+    key and ignores a visitor-selected DeepSeek model id.
+    """
+
+    if settings.is_ollama:
+        return (
+            settings.api_key or DEFAULT_OLLAMA_API_KEY,
+            settings.base_url or DEFAULT_OLLAMA_BASE_URL,
+            settings.model or DEFAULT_OLLAMA_MODEL,
+        )
+    key = (
+        settings.api_key
+        or (api_key or "").strip()
+        or (env.get("DEEPSEEK_API_KEY") or "").strip()
+    )
+    if not key:
+        return None
+    return (
+        key,
+        settings.base_url or str(config["base_url"]),
+        settings.model or (model or "").strip() or str(config["model"]),
+    )
+
+
 def build_insight_gateway(
     config: Mapping[str, Any],
     *,
@@ -676,20 +866,26 @@ def build_insight_gateway(
 
     ``api_key`` is a visitor-supplied key for one request. It is used for that
     call and nothing else: callers must not keep the gateway, log it, or write it
-    anywhere.
+    anywhere. With ECOM_MODEL_PROVIDER=ollama the local endpoint needs no key,
+    so the step stays on and the visitor key is not used.
     """
 
     env = os.environ if environment is None else environment
-    key = (api_key or "").strip() or (env.get("DEEPSEEK_API_KEY") or "").strip()
-    if not key:
+    settings = resolve_model_provider(env)
+    connection = _gateway_connection(
+        config, settings, env, api_key=api_key, model=model
+    )
+    if connection is None:
         return None
+    key, base_url, chosen_model = connection
     factory = client_factory or _openai_client
-    client = factory(api_key=key, base_url=str(config["base_url"]), max_retries=0)
+    client = factory(api_key=key, base_url=base_url, max_retries=0)
     return DeepSeekInsightGateway(
         client=client,
-        model=(model or "").strip() or str(config["model"]),
+        model=chosen_model,
         max_output_tokens=900,
         request_timeout_seconds=int(config.get("request_timeout_seconds", 30)),
+        provider=settings.provider,
     )
 
 
@@ -738,10 +934,12 @@ class DeepSeekChatGateway:
         max_output_tokens: int = 1200,
         request_timeout_seconds: int = 30,
         max_tool_rounds: int = MAX_TOOL_ROUNDS,
+        provider: str = DEFAULT_MODEL_PROVIDER,
     ) -> None:
         if getattr(client, "max_retries", 0) != 0:
             raise ValueError("DeepSeek client automatic retries must be disabled.")
         self.client = client
+        self.provider = provider
         self.model = model
         self.max_output_tokens = max_output_tokens
         self.request_timeout_seconds = request_timeout_seconds
@@ -827,7 +1025,7 @@ class DeepSeekChatGateway:
                     temperature=0,
                     max_tokens=self.max_output_tokens,
                     timeout=self.request_timeout_seconds,
-                    extra_body={"thinking": {"type": "disabled"}},
+                    **_provider_request_options(self.provider),
                     messages=working,
                     tools=tools,
                     tool_choice="auto",
@@ -861,9 +1059,10 @@ class DeepSeekChatGateway:
                     }
                 )
                 for call in tool_calls:
+                    arguments = _clean_tool_arguments(call.function.arguments)
                     if call.function.name == "submit_chat_answer":
                         draft = ChatAnswerDraft.model_validate(
-                            json.loads(call.function.arguments)
+                            _loads_model_json(arguments)
                         )
                         steps.append(
                             ChatToolStep(
@@ -881,7 +1080,7 @@ class DeepSeekChatGateway:
                         return ChatTurnOutcome(draft, tuple(steps), calls)
                     started = perf_counter()
                     result, title, detail, status = tool_executor(
-                        call.function.name, call.function.arguments
+                        call.function.name, arguments
                     )
                     steps.append(
                         ChatToolStep(
@@ -934,14 +1133,19 @@ def build_chat_gateway(
     """Mirror of build_insight_gateway for the operator chat assistant."""
 
     env = os.environ if environment is None else environment
-    key = (api_key or "").strip() or (env.get("DEEPSEEK_API_KEY") or "").strip()
-    if not key:
+    settings = resolve_model_provider(env)
+    connection = _gateway_connection(
+        config, settings, env, api_key=api_key, model=model
+    )
+    if connection is None:
         return None
+    key, base_url, chosen_model = connection
     factory = client_factory or _openai_client
-    client = factory(api_key=key, base_url=str(config["base_url"]), max_retries=0)
+    client = factory(api_key=key, base_url=base_url, max_retries=0)
     return DeepSeekChatGateway(
         client=client,
-        model=(model or "").strip() or str(config["model"]),
+        model=chosen_model,
         max_output_tokens=1200,
         request_timeout_seconds=int(config.get("request_timeout_seconds", 30)),
+        provider=settings.provider,
     )

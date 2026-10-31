@@ -12,7 +12,7 @@
   "contract_sha256": "b93053ce55ab7d47e865de53fe02cc076f8a1eeaa1f19487ec3c41a5f6f647fa",
   "corpus_sha256": "d2a6f9e1cfe174f7eb26baab7fb63ebfb3744c3dff0d22c0f3ff2fa65f36c90b",
   "dataset_snapshot_id": "44eface81cccdceb36c3fd61f93736267e63b84ba63902fac026659540518846",
-  "estimated_cost_usd": 0.0042871808,
+  "estimated_cost_usd": 0.0042933408,
   "gates": {
     "adversarial_containment": true,
     "all_blocking_gates_passed": true,
@@ -30,7 +30,7 @@
     "workflow_and_status": true
   },
   "git_dirty": false,
-  "git_revision": "66ec83c87d11e8a2afc8fc57063451e75ee2047c",
+  "git_revision": "64c1194410663b0d8dbc58d4cbb0e2761339faae",
   "limitations": [
     "Silver expectations are derived from deterministic local evidence.",
     "This bounded run does not establish production traffic reliability.",
@@ -53,11 +53,11 @@
   "run_count": 30,
   "schema_version": "p6-live-agent-summary-v1",
   "selection_sha256": "86988390d5e5dd95e5fd0007865daa843d11103b1a271c1497edf752568cc79d",
-  "source_sha256": "541b011856418656d51041db30f61ff332b18945745f1460bc12dad6f5f2d0dc",
+  "source_sha256": "ba7ee72f9478394916fda717bd05d543b665c67b9a5f4536f4cf7c3f10b60dac",
   "usage": {
     "cache_hit_input_tokens": 52736,
     "cache_miss_input_tokens": 10208,
     "input_tokens": 62944,
-    "output_tokens": 9680
+    "output_tokens": 9702
   }
 }

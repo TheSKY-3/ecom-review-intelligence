@@ -32,7 +32,7 @@
     "workflow_expectations_exact": true
   },
   "git_dirty": false,
-  "git_revision": "b234007d63756c8211a2f7b2614ddd72452fd973",
+  "git_revision": "b6ad68f0a637d7a073ed997fab1f3e01eda099ba",
   "limitations": [
     "Expectations are deterministic silver labels, not gold or human-reviewed labels.",
     "Fake provider behavior does not establish live DeepSeek availability.",
@@ -46,8 +46,8 @@
     "fabricated_evidence": 0,
     "fabricated_identifiers": 0,
     "input_tokens": 0,
-    "latency_ms_mean": 69.4101266672078,
-    "latency_ms_p95": 109.93569999845931,
+    "latency_ms_mean": 67.37077000022207,
+    "latency_ms_p95": 104.74919999978738,
     "output_tokens": 0,
     "provider_failure_case_count": 1,
     "public_leaks": 0,
@@ -58,5 +58,5 @@
     "workflow_routing_accuracy": 1.0
   },
   "schema_version": "p6-offline-agent-summary-v1",
-  "source_sha256": "541b011856418656d51041db30f61ff332b18945745f1460bc12dad6f5f2d0dc"
+  "source_sha256": "ba7ee72f9478394916fda717bd05d543b665c67b9a5f4536f4cf7c3f10b60dac"
 }

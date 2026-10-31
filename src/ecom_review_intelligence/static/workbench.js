@@ -55,6 +55,11 @@ const state = {
   workflow: "diagnosis",
   runToken: null,
   productLabels: {},
+  selectedCodes: [],
+  catalog: null,
+  catalogQuery: "",
+  catalogTier: "all",
+  catalogShown: 50,
   insightAvailable: document.querySelector("main")?.dataset.insightAvailable === "true",
   insightByo: document.querySelector("main")?.dataset.insightByo === "true",
   runQuestion: "",
@@ -67,6 +72,18 @@ const submitButton = form.querySelector("button[type='submit']");
 document.querySelectorAll("input[name='product']").forEach((input) => {
   state.productLabels[input.value] = input.dataset.label || input.value;
 });
+state.selectedCodes = [...document.querySelectorAll("input[name='product']:checked")]
+  .map((input) => input.value);
+
+document.addEventListener("change", (event) => {
+  const input = event.target;
+  if (!(input instanceof HTMLInputElement) || input.name !== "product") return;
+  if (input.checked) {
+    if (!state.selectedCodes.includes(input.value)) state.selectedCodes.push(input.value);
+  } else {
+    state.selectedCodes = state.selectedCodes.filter((code) => code !== input.value);
+  }
+});
 
 function textElement(tag, className, value) {
   const element = document.createElement(tag);
@@ -76,7 +93,7 @@ function textElement(tag, className, value) {
 }
 
 function selectedProducts() {
-  return [...document.querySelectorAll("input[name='product']:checked")].map((item) => item.value);
+  return [...state.selectedCodes];
 }
 
 function selectWorkflow(workflow) {
@@ -90,6 +107,221 @@ function selectWorkflow(workflow) {
 
 document.querySelectorAll(".workflow-button").forEach((button) => {
   button.addEventListener("click", () => selectWorkflow(button.dataset.workflow));
+});
+
+const CATALOG_PAGE = 50;
+
+function isLocalMode() {
+  const mode = document.querySelector("#workbench-mode");
+  return Boolean(mode) && mode.textContent === "LOCAL";
+}
+
+function catalogMatches() {
+  const catalog = state.catalog;
+  if (!catalog) return [];
+  const query = state.catalogQuery.trim().toLowerCase();
+  return catalog.items.filter((item) => {
+    if (state.catalogTier !== "all" && item.tier !== state.catalogTier) return false;
+    if (!query) return true;
+    return `${item.label} ${item.code}`.toLowerCase().includes(query);
+  });
+}
+
+function catalogItemElement(item) {
+  const label = document.createElement("label");
+  label.className = "product-option";
+  const input = document.createElement("input");
+  input.type = "checkbox";
+  input.name = "product";
+  input.value = item.code;
+  input.dataset.label = item.label || item.code;
+  input.checked = state.selectedCodes.includes(item.code);
+  const text = document.createElement("span");
+  text.append(textElement("strong", "", item.label || item.code));
+  const segment = item.segment || [
+    `${Number(item.review_count || 0).toLocaleString()} 条评论`,
+    item.tier ? `${item.tier} 档` : "",
+  ].filter(Boolean).join(" · ");
+  text.append(textElement("small", "", segment));
+  label.append(input, text);
+  state.productLabels[item.code] = item.label || item.code;
+  return label;
+}
+
+function updateCatalogChrome(matches) {
+  const count = document.querySelector("#catalog-count");
+  if (count && state.catalog) {
+    const total = Number(state.catalog.total || state.catalog.items.length);
+    count.textContent = total > state.catalog.items.length
+      ? `${state.catalog.items.length.toLocaleString()} / ${total.toLocaleString()} 个商品`
+      : `${total.toLocaleString()} 个商品`;
+  }
+  const empty = document.querySelector("#catalog-empty");
+  if (empty) empty.hidden = matches.length > 0;
+  const more = document.querySelector("#catalog-more");
+  if (more) {
+    const rest = matches.length - state.catalogShown;
+    more.hidden = rest <= 0;
+    if (rest > 0) more.textContent = `显示更多（剩余 ${rest.toLocaleString()} 个）`;
+  }
+}
+
+function renderCatalog() {
+  const list = document.querySelector("#product-option-list");
+  if (!list || !state.catalog) return;
+  const matches = catalogMatches();
+  list.replaceChildren(...matches.slice(0, state.catalogShown).map(catalogItemElement));
+  updateCatalogChrome(matches);
+}
+
+function growCatalog() {
+  const list = document.querySelector("#product-option-list");
+  if (!list || !state.catalog) return;
+  const matches = catalogMatches();
+  const next = matches.slice(state.catalogShown, state.catalogShown + CATALOG_PAGE);
+  if (!next.length) return;
+  state.catalogShown += next.length;
+  next.forEach((item) => list.append(catalogItemElement(item)));
+  updateCatalogChrome(matches);
+}
+
+function renderTierFilter() {
+  const box = document.querySelector("#tier-filter");
+  if (!box) return;
+  box.replaceChildren();
+  const counts = { all: state.catalog?.items.length || 0 };
+  (state.catalog?.items || []).forEach((item) => {
+    counts[item.tier] = (counts[item.tier] || 0) + 1;
+  });
+  const tiers = ["A", "B", "C"].filter((tier) => counts[tier]);
+  if (tiers.length <= 1) {
+    const label = tiers.length ? `${tiers[0]} 档 ${counts[tiers[0]].toLocaleString()}` : "无商品";
+    box.append(textElement("span", "tier-chip", label));
+    return;
+  }
+  const entries = [["all", "全部", counts.all]];
+  tiers.forEach((tier) => {
+    entries.push([tier, `${tier} 档`, counts[tier]]);
+  });
+  entries.forEach(([value, label, count]) => {
+    const button = textElement("button", "", `${label} ${count.toLocaleString()}`);
+    button.type = "button";
+    button.dataset.tier = value;
+    button.setAttribute("aria-pressed", String(state.catalogTier === value));
+    button.addEventListener("click", () => {
+      state.catalogTier = value;
+      state.catalogShown = CATALOG_PAGE;
+      renderTierFilter();
+      renderCatalog();
+    });
+    box.append(button);
+  });
+}
+
+async function initCatalog() {
+  if (!isLocalMode()) return;
+  try {
+    const payload = await requestJson("/api/v1/catalog");
+    const items = Array.isArray(payload.items)
+      ? payload.items.filter((item) => item && item.code)
+      : [];
+    if (!items.length) return;
+    state.catalog = {
+      total: Number(payload.total || items.length),
+      tiers: payload.tiers || {},
+      items,
+    };
+    const known = new Set(items.map((item) => item.code));
+    state.selectedCodes = state.selectedCodes.filter((code) => known.has(code));
+    if (!state.selectedCodes.length) state.selectedCodes = [items[0].code];
+    const tools = document.querySelector("#catalog-tools");
+    if (tools) tools.hidden = false;
+    renderTierFilter();
+    renderCatalog();
+    const search = document.querySelector("#catalog-search");
+    if (search) {
+      search.addEventListener("input", () => {
+        state.catalogQuery = search.value;
+        state.catalogShown = CATALOG_PAGE;
+        renderCatalog();
+      });
+    }
+    const list = document.querySelector("#product-option-list");
+    if (list) {
+      list.addEventListener("scroll", () => {
+        if (list.scrollTop + list.clientHeight >= list.scrollHeight - 80) growCatalog();
+      });
+    }
+    const more = document.querySelector("#catalog-more");
+    if (more) more.addEventListener("click", growCatalog);
+  } catch (error) {
+    state.catalog = null;
+  }
+}
+
+function formatCoverage(value) {
+  const percent = Math.max(0, Math.min(1, Number(value) || 0)) * 100;
+  if (percent <= 0) return "0%";
+  return percent >= 10 ? `${percent.toFixed(0)}%` : `${percent.toFixed(1)}%`;
+}
+
+async function initCategory() {
+  if (!isLocalMode()) return;
+  const card = document.querySelector("#category-card");
+  const list = document.querySelector("#category-list");
+  if (!card || !list) return;
+  try {
+    const payload = await requestJson("/api/v1/category");
+    const aspects = (Array.isArray(payload.aspects) ? payload.aspects : [])
+      .filter((item) => item && item.aspect && item.label)
+      .sort((a, b) => Number(b.coverage || 0) - Number(a.coverage || 0));
+    if (!aspects.length) return;
+    list.replaceChildren();
+    aspects.forEach((item) => {
+      const row = document.createElement("div");
+      row.className = "category-row";
+      const track = document.createElement("div");
+      track.className = "category-track";
+      const fill = document.createElement("i");
+      fill.style.width = `${Math.max(0, Math.min(1, Number(item.coverage) || 0)) * 100}%`;
+      track.append(fill);
+      row.append(
+        textElement("span", "", item.label),
+        track,
+        textElement("b", "", formatCoverage(item.coverage)),
+      );
+      row.title = `${Number(item.matched || 0).toLocaleString()} 条匹配评论`;
+      list.append(row);
+    });
+    const meta = document.querySelector("#category-meta");
+    if (meta) {
+      const parts = [];
+      if (Number(payload.review_total || 0)) parts.push(`${Number(payload.review_total).toLocaleString()} 条评论`);
+      if (Number(payload.product_total || 0)) parts.push(`${Number(payload.product_total).toLocaleString()} 个商品`);
+      meta.textContent = parts.join(" · ");
+    }
+    card.hidden = false;
+  } catch (error) {
+    card.hidden = true;
+  }
+}
+
+function setupSignalInfo() {
+  const button = document.querySelector("#signal-info");
+  const text = document.querySelector("#signal-info-text");
+  if (!button || !text) return;
+  button.addEventListener("click", () => {
+    const open = button.getAttribute("aria-expanded") === "true";
+    button.setAttribute("aria-expanded", String(!open));
+    text.hidden = open;
+  });
+}
+
+document.querySelectorAll(".more-menu .more-item").forEach((item) => {
+  item.addEventListener("click", () => {
+    const menu = item.closest(".more-menu");
+    if (menu) menu.open = false;
+  });
 });
 
 const statusLabels = {
@@ -145,54 +377,74 @@ function renderLexiconTotals(payload) {
     if (node) node.textContent = Number(totals[key] || 0).toLocaleString();
   });
   const conflictShare = Math.round(((totals.conflicting || 0) / totals.matched_count) * 100);
+  const matchedLabel = document.querySelector("#lexicon-matched");
+  if (matchedLabel) {
+    matchedLabel.textContent = `全部 ${Number(totals.matched_count).toLocaleString()} 条`;
+  }
   const note = document.querySelector("#lexicon-note");
   if (note) {
-    note.textContent =
-      "按同一套词表判定全部 " + totals.matched_count.toLocaleString()
-      + " 条匹配评论, 只作初步参考: 词表会误判"
-      + (conflictShare ? "、且 " + conflictShare + "% 的评论同时出现正反词" : "")
-      + "; 不能替代逐条核对, 也不能当结论。";
+    note.hidden = !conflictShare;
+    note.textContent = conflictShare
+      ? `其中 ${conflictShare}% 的匹配评论同时出现正反词。`
+      : "";
   }
 }
 
-function renderBars(payload) {
+const SIGNAL_KEYS = [
+  ["supporting", "支持"],
+  ["opposing", "反对"],
+  ["conflicting", "冲突"],
+  ["insufficient", "不足"],
+];
+
+function renderSignal(payload) {
   const fallback = { supporting: 0, opposing: 0, conflicting: 0, insufficient: 0 };
-  payload.evidence.forEach((item) => { fallback[item.polarity] += 1; });
+  (payload.evidence || []).forEach((item) => {
+    if (item.polarity in fallback) fallback[item.polarity] += 1;
+  });
   const totals = payload.signal_totals && Object.keys(payload.signal_totals).length
     ? payload.signal_totals
     : fallback;
-  const scope = document.querySelector("#signal-scope-label");
-  if (scope) {
-    scope.textContent = "抽样凭证 " + (payload.evidence_count || 0).toLocaleString()
-      + " 条, 非全部 " + (payload.matched_count || 0).toLocaleString()
-      + " 条 · 看规模请用下方全量粗筛";
-  }
-  const keys = [["supporting", "支持"], ["opposing", "反对"], ["conflicting", "冲突"], ["insufficient", "信息不足"]];
-  const total = keys.reduce((sum, [key]) => sum + (totals[key] || 0), 0);
-  keys.forEach(([key, name]) => {
-    const value = totals[key] || 0;
-    const percentage = total ? Math.round((value / total) * 100) : 0;
-    document.querySelector(`#bar-${key}`).style.width = `${percentage}%`;
-    document.querySelector(`#label-${key}`).textContent = `${name} · ${value} (${percentage}%)`;
+  const total = SIGNAL_KEYS.reduce((sum, [key]) => sum + Number(totals[key] || 0), 0);
+  const counts = document.querySelector("#signal-counts");
+  if (counts) counts.replaceChildren();
+  SIGNAL_KEYS.forEach(([key, label]) => {
+    const value = Number(totals[key] || 0);
+    const segment = document.querySelector(`#seg-${key}`);
+    if (segment) segment.style.width = `${total ? (value / total) * 100 : 0}%`;
+    if (!counts) return;
+    const chip = document.createElement("span");
+    chip.className = "legend-item";
+    const dot = document.createElement("i");
+    dot.className = key;
+    chip.append(dot, document.createTextNode(`${label} `), textElement("b", "", value.toLocaleString()));
+    counts.append(chip);
   });
+  const matched = document.querySelector("#matched-count");
+  if (matched) matched.textContent = Number(payload.matched_count || 0).toLocaleString();
 }
 
 function renderCoverage(payload) {
-  const matched = payload.matched_count || 0;
-  const sampled = payload.evidence_count || 0;
-  const percentage = matched ? Math.min(100, (sampled / matched) * 100) : 0;
-  document.querySelector("#matched-count").textContent = matched.toLocaleString();
-  document.querySelector("#coverage-label").textContent = `匹配评论 ${matched.toLocaleString()} · 展示样本 ${sampled.toLocaleString()}`;
-  document.querySelector("#coverage-bar").style.width = `${percentage}%`;
-  document.querySelector("#coverage-note").textContent = matched
-    ? `覆盖率 ${Math.round(percentage)}% = 展示样本 / 匹配评论, 用于说明抽样范围, 不是置信度。`
-    : "当前维度没有匹配评论, 覆盖率为 0%, 不是置信度判断。";
+  // This is the share of matched reviews actually shown as cards, not how much
+  // of the product's reviews mention the aspect. Labelling it "coverage" made a
+  // 5-of-766 sample read like 1% of reviews.
+  const matched = Number(payload.matched_count || 0);
+  const sampled = Number(payload.evidence_count || 0);
+  const ratio = matched ? Math.min(1, sampled / matched) : 0;
+  const value = document.querySelector("#coverage-value");
+  if (value) value.textContent = formatCoverage(ratio);
+  const label = document.querySelector("#coverage-label");
+  if (label) {
+    label.textContent = `样本 ${sampled.toLocaleString()} 条 / 匹配评论 ${matched.toLocaleString()} 条`;
+  }
+  const bar = document.querySelector("#coverage-bar");
+  if (bar) bar.style.width = `${ratio * 100}%`;
 }
 
 function renderProductSignals(payload) {
   const list = document.querySelector("#product-signal-visual");
   list.replaceChildren();
-  payload.product_summaries.forEach((summary) => {
+  (payload.product_summaries || []).forEach((summary) => {
     const totals = summary.signal_totals || {};
     const keys = [
       ["supporting", "支持"],
@@ -263,7 +515,7 @@ async function exportReviews() {
     const payload = await response.json();
     if (response.status === 409 && payload.error?.code === "EXPORT_ALREADY_DONE") {
       output.append(
-        textElement("p", "signal-caveat", "本次运行已经导出过一次,不能重复导出;这是上次的位置:"),
+        textElement("p", "signal-caveat", "本次运行已导出过，上次的位置："),
       );
       if (payload.folder) output.append(exportBoxElement(payload.folder, payload.exported || 0));
       return;
@@ -277,7 +529,7 @@ async function exportReviews() {
         textElement(
           "p",
           "insight-footnote",
-          `匹配 ${payload.matched_total} 条,CSV 里是 ${payload.exported} 条。`,
+          `匹配 ${payload.matched_total} 条，已写入 ${payload.exported} 条。`,
         ),
       );
     }
@@ -421,7 +673,7 @@ function renderInsight(payload) {
         "insight-degraded",
         insightStatusCopy[payload.reason] ||
           (failed
-            ? "模型这次的输出没有通过引用校验,整段丢弃,页面上不展示任何内容;可以再点一次重试。"
+            ? "模型输出没有通过引用校验，可再点一次重试。"
             : `AI 结果未能生成(${payload.reason || "UNKNOWN"});可以再点一次重试。`),
       ),
     );
@@ -480,7 +732,7 @@ function renderInsight(payload) {
     textElement(
       "p",
       "insight-footnote",
-      "上面每句引用都已核对到评论原句;AI 只做归纳,证据够不够仍由代码规则决定。",
+      "引用逐句核对到评论原句。",
     ),
   );
   return box;
@@ -621,8 +873,8 @@ function openSettings() {
   if (settingsNote) settingsNote.textContent = "";
   if (settingsStatus) {
     settingsStatus.textContent = userKey
-      ? "密钥已保存在这个浏览器里;换模型只影响这台电脑上的这次使用。"
-      : "还没有保存密钥。填一把 DeepSeek API Key 后,AI 分析与问答才可用。";
+      ? "密钥已保存。"
+      : "未保存密钥，AI 分析与问答不可用。";
   }
   if (typeof settingsDialog.showModal === "function") {
     settingsDialog.showModal();
@@ -683,7 +935,7 @@ function openInsightKeyPanel(panel, run) {
   const note = textElement(
     "p",
     "insight-key-note",
-    "密钥只存在这个标签页里,关掉即清除;它只用于这次分析,不会写进日志或磁盘。",
+    "密钥只存在这个标签页里，关闭即清除。",
   );
   submit.addEventListener("click", () => {
     const value = input.value.trim();
@@ -996,17 +1248,20 @@ function renderClarification(payload) {
 
 function renderResult(payload, options = {}) {
   state.runToken = payload.run_token;
-  payload.products.forEach((product) => { state.productLabels[product.code] = product.label; });
+  (payload.products || []).forEach((product) => { state.productLabels[product.code] = product.label; });
   document.querySelector("#run-alias").textContent = payload.run_alias;
   document.querySelector("#result-title").textContent = payload.title;
-  document.querySelector("#result-summary").textContent = payload.summary;
-  document.querySelector("#matched-count").textContent = payload.matched_count.toLocaleString();
   document.querySelector("#evidence-count").textContent = String(payload.evidence_count);
   document.querySelector("#degraded-value").textContent = payload.degraded ? "已触发" : "未触发";
   document.querySelector("#next-action").textContent = payload.next_action;
+  const signalCard = document.querySelector("#signal-card");
+  const needsProduct = payload.status === "CLARIFICATION_REQUIRED";
+  if (signalCard) signalCard.hidden = needsProduct;
+  const nextBlock = document.querySelector("#next-action-block");
+  if (nextBlock) nextBlock.hidden = false;
   renderBlindSpot(payload.lexicon_blind_spot);
   setStatus(payload.status);
-  renderBars(payload);
+  renderSignal(payload);
   renderLexiconTotals(payload);
   renderCoverage(payload);
   renderProductSignals(payload);
@@ -1159,7 +1414,7 @@ function renderChatChips() {
     chip.type = "button";
     chip.addEventListener("click", () => {
       if (!state.runToken) {
-        qaMessage("qa-system", "请先点「开始分析」跑一次,再回到这里提问。");
+        qaMessage("qa-system", "请先「开始分析」跑一次，再提问。");
         return;
       }
       qaMessage("chat-user", text);
@@ -1238,7 +1493,7 @@ function exportBoxElement(folder, exported) {
     textElement(
       "p",
       "insight-footnote",
-      "路径相对本机数据目录(站点不返回绝对路径);文件含评论原文,只用于人工标注,不要提交进版本库。",
+      "路径相对本机数据目录。",
     ),
   );
   return box;
@@ -1286,20 +1541,13 @@ function renderChatAnswer(payload) {
     points.append(li);
   });
   if (payload.review_points.length || payload.stats_points.length) {
-    sections.push(section("依据(引用已逐字核对,数字均可追溯)", "insight-specifics", [points]));
+    sections.push(section("依据", "insight-specifics", [points]));
   }
   sections.push(section("不能说什么", "insight-not-supported", [line(payload.not_supported)]));
   sections.forEach((item) => box.append(item));
   if (payload.export_path) {
     box.append(exportBoxElement(payload.export_path, payload.export_rows));
   }
-  box.append(
-    textElement(
-      "p",
-      "insight-footnote",
-      "回答里的每条引用都逐字核对到评论原文,正文里的阿拉伯数字逐个对照当次读到的评论和查询结果;核对不过的内容整条丢弃,不会出现在这里。",
-    ),
-  );
   return box;
 }
 
@@ -1345,7 +1593,7 @@ async function qaAsk(message) {
     qaMessage(
       "qa-system",
       payload.status === "VALIDATION_FAILED"
-        ? `回答未通过校验: ${describeViolations(payload.reason)};整条丢弃,可以换个问法重试。`
+        ? `回答未通过校验：${describeViolations(payload.reason)}；可以换个问法重试。`
         : chatViolationCopy[payload.reason] ||
           `这一轮没有生成回答(${payload.reason || "UNKNOWN"});可以重试。`,
     );
@@ -1363,7 +1611,7 @@ if (qaForm) {
     const message = qaInput.value.trim();
     if (!message) return;
     if (!state.runToken) {
-      qaMessage("qa-system", "请先点「开始分析」跑一次,再回到这里提问。");
+      qaMessage("qa-system", "请先「开始分析」跑一次，再提问。");
       return;
     }
     qaInput.value = "";
@@ -1387,3 +1635,7 @@ const exportButton = document.querySelector("#export-button");
 if (exportButton) {
   exportButton.addEventListener("click", exportReviews);
 }
+
+setupSignalInfo();
+initCatalog();
+initCategory();

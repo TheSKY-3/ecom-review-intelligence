@@ -43,6 +43,15 @@ Conditions that make this acceptable, and that must stay true:
 - reviewer-level identifiers, images, and provider assets stay out;
 - the full category store and the raw gzip files remain local-only.
 
+### Screenshots of the local store (2026-10-31)
+
+The published README screenshots are now captured from the full local store (244
+Tier-A products), so the catalog column shows public product titles and per-product
+review counts. The owner approved this on 2026-10-31 as product metadata rather than
+review content. Review text, evidence IDs, ASINs, and reviewer identifiers still stay
+out: the chat image keeps the question and the four tool calls and crops the answer,
+and the insight image carries only the model's summary and citation labels.
+
 Anything beyond this exception still needs a separate rights review.
 
 ## Local handling

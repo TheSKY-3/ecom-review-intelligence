@@ -25,13 +25,9 @@
 
 ![workbench overview](docs/assets/p7-workbench-overview.png)
 
-一次「运行噪音」诊断：左栏选商品（演示库 3 个，按评论量分 A/B/C 档），中间选方面和要回答的问题，右栏出结果。上面这张图截自公开演示库，所以目录里只有 3 个商品；接上本机全量库后，同一位置是这样的：
+一次「运行噪音」诊断：左栏是商品目录（A 档 244 个，全库 3,278 个商品，按评论数分 A/B/C 档），中间选方面和要回答的问题，右栏出结果。这款制冰机 4,241 条评论里匹配 766 条，按星级分层抽 5 条（支持 3 / 反对 1 / 冲突 1 / 信息不足 0），每张证据卡都能展开原文核对。
 
-![本机全量库的商品目录](docs/assets/p7-workbench-catalog.png)
-
-目录变成 **244 / 3,278 个商品**，A 档 244 个（评论数 ≥100）；档位是筛选器，B 档、C 档的商品也能选，只是评论太少时 5 条样本说明不了什么。这张只截目录栏、不带商品标题，是为了不把未公开的商品名贴出来。这款制冰机 4,241 条评论里匹配 766 条，按星级分层抽 5 条（支持 3 / 反对 1 / 冲突 1 / 信息不足 0），每张证据卡都能展开原文核对。
-
-右上角的「类目维度概览」给出另一层参照：八个方面在全类目 11,958 条评论里各占多少（制冰质量 74%、运行噪音 24%、产能与速度 24%……）。只有 5 条样本时，你只能说「这个商品有人抱怨噪音」；有了类目基线，才能判断它在这个类目里算不算突出。「抽样比例 0.7%」只说明抽了多少，不是置信度。
+右上角的「类目维度概览」给出另一层参照：八个冻结方面在全库 136,604 条评论里各占多少（制冰质量 68%、产能与速度 24%、安装体验 23%、运行噪音 15%……）。只有 5 条样本时，你只能说「这个商品有人抱怨噪音」；有了类目基线，才能判断它在这个类目里算不算突出。「抽样比例 0.7%」只说明抽了多少，不是置信度。
 
 对话里问一句，模型不会「直接读库」：它先申请读某张证据卡、再查统计，本地执行完把结果回传，最后才提交回答。每一次工具调用单独列出参数摘要和耗时：
 
@@ -49,7 +45,7 @@
 
 ![export matched reviews](docs/assets/p7-workbench-export.png)
 
-界面图用真实 Chrome 截自 `scripts/serve_demo.py --mode bundled` 的演示数据（3 个商品 / 11,958 条评论），按面板裁切；对话图保留了问题与四步执行轨迹、裁掉了回答区，避免把评论原文带进公开仓库。
+界面图用真实 Chrome 截自本机全量库（244 个 A 档商品 / 3,278 个商品 / 136,604 条评论），按面板裁切；仓库自带的演示库只有 3 个商品，跑起来时目录会短一些、口径不变。对话图保留了问题与四步执行轨迹、裁掉了回答区，避免把评论原文带进公开仓库。
 
 > **v0.3.0 的改动**：界面原来只露出 3 个商品，现在把本地库中 244 个「评论数 ≥100」的 A 档商品全部列进目录（覆盖全部评论的 74.3%），同类目的商品可以直接换着查；新增的类目基线补上了「这个数字算不算多」这一层，单商品的 5 条样本不再悬空。布局改成「商品目录 / 任务 / 结果」三栏，原来的「覆盖率」改名为「抽样比例」，口径不变（样本数 ÷ 匹配数）。两条模型步骤也不再绑死 DeepSeek：设 `ECOM_MODEL_PROVIDER=ollama` 就能指向任意 OpenAI 兼容端点（包括本机 checkpoint），本机小模型的实测结论写在 `docs/engineering-readme.md`。仓库自带的演示库仍只带 3 个商品，244 个只在本机全量库生效。
 
@@ -89,7 +85,30 @@
 | 容器 | 有 Docker 的人 | `docker compose up --build demo` → `http://127.0.0.1:8000` |
 | 源码 | 想读代码、跑测试 | `pip install -e ".[dev]"`，然后 `pytest` 或 `scripts/serve_demo.py --mode bundled` |
 
-仓库自带 `data/public/ice_makers_public.sqlite`：3 个商品、11,958 条真实评论、10.9 MB，所以**克隆即可运行**，不需要原始数据集。完整类目库（约 118 MB）与原始数据不在仓库里。
+仓库自带 `data/public/ice_makers_public.sqlite`：3 个商品、11,958 条真实评论、10.9 MB，所以**克隆即可运行**，不需要原始数据集。完整类目库（约 118 MB）与原始数据不在仓库里，需要的话按下一节自己构建。
+
+## 想用全量数据（可选）
+
+上面截图来自本机全量库。仓库只带 3 商品演示库，全量库需要你自己从原始数据构建一次——数据不随仓库分发：
+
+1. 从 Amazon Reviews 2023 下载两个文件，放进 `data/raw/`：
+   - `Appliances.jsonl.gz`（约 270 MB）：<https://mcauleylab.ucsd.edu/public_datasets/data/amazon_2023/raw/review_categories/Appliances.jsonl.gz>
+   - `meta_Appliances.jsonl.gz`（约 66 MB）：<https://mcauleylab.ucsd.edu/public_datasets/data/amazon_2023/raw/meta_categories/meta_Appliances.jsonl.gz>
+2. 注册并校验这两个文件（只读本地文件，不联网也行）：
+   ~~~powershell
+   python scripts/run_register_existing.py --project-root .
+   ~~~
+3. 用仓库里冻结的 P2 范围与 P3 契约物化证据库：
+   ~~~powershell
+   python scripts/run_phase4_build.py --project-root .
+   ~~~
+   产物是 `data/processed/ice_makers_evidence.sqlite`：117,563,392 字节、contract `b93053ce…`，与我本机那份逐字节一致（2026-10-31 在干净 checkout 上实测，构建后工作台返回 244 / 3,278 个商品）。
+4. 用全量库启动工作台：
+   ~~~powershell
+   python scripts/run_phase7_workbench.py --mode local --acknowledge-local-data --project-root .
+   ~~~
+
+第 3 步刻意复用仓库里冻结的 P2/P3 工件：重建的是数据和证据库，不是契约。如果你要改方面词表或契约，就得重跑 `run_phase2_audit.py --selected-category "Ice Makers"` 和 `run_phase3_contract.py`——那会生成新的 contract id（重跑带时间戳，同样的输入也不会字节复现），P6 评测与 P7 冻结配置都要一起重签。
 
 ## 三条工作流（本地真实数据实测）
 

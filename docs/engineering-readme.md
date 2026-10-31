@@ -158,12 +158,19 @@ runs through the same P6 graph and verifier. The bundled three-product demo stor
 therefore reports three products, not 244.
 
 The regression detail stays under ignored `artifacts/evals/`; stdout contains only a
-fixed status and workflow count. Local mode does not call DeepSeek or display private
+fixed status and workflow count.
+
+The README documents the rebuild path for the full local store: register the two
+Appliances gzip files under `data/raw/`, then run `run_phase4_build.py` against the
+frozen P2 scope and P3 contract shipped in `artifacts/`. Rebuilding the contract
+itself (rerunning P2/P3) produces a new contract id even from identical input,
+because the contract records its audit hash, revision, and observation time; that
+invalidation is deliberate and requires re-signing the P6/P7 configuration. Local mode does not call DeepSeek or display private
 product keys, evidence IDs, paths, or credentials. The aggregate run response stays
 free of review text; an explicit per-card detail request (local mode only) returns
 the underlying review rows on demand so the store owner can perform the review step.
 
-![Synthetic P7 operations workbench](docs/assets/p7-workbench-desktop.png)
+![P7 operations workbench on the local store](docs/assets/p7-workbench-desktop.png)
 
 The reproducible browser check uses local Edge/Chrome with Playwright and exercises
 all three workflows plus clarification/resume on desktop and mobile. Its public

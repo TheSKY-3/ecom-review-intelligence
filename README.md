@@ -134,6 +134,14 @@
 
 客户端拿到的是 `list_products` / `diagnose_product` / `compare_products` / `triage_issues` / `category_baseline` 五个工具——只有计数、商品标题与本地编号、维度名；评论文本、证据 ID、ASIN、路径不离开你的机器，这条边界有测试盯着。实现与验证记录见 [docs/mcp-server.md](docs/mcp-server.md)。
 
+下面是在 ZCode 客户端里真实调用的实测截图（会话截图，已裁去窗口其余部分）：问一句「用 MCP 查一下 frostline 的运行噪音」，客户端按协议调起本机服务器：
+
+![ZCode 客户端真实调用 MCP 工具：提问与加载](docs/assets/mcp-zcode-call.png)
+
+返回的只有口径和数字，与工作台同屏数字逐位一致：
+
+![ZCode 客户端真实调用 diagnose_product 的返回结果](docs/assets/mcp-zcode-result.png)
+
 </details>
 
 仓库自带 `data/public/ice_makers_public.sqlite`：3 个商品、11,958 条真实评论、10.9 MB，所以**克隆即可运行**，不需要原始数据集。

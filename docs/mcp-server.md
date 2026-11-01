@@ -48,5 +48,9 @@
 
 - 10 项协议/工具测试全绿（握手、通知静默、未知方法 -32601、解析错误 -32700、工具错误走 `isError`、文本/ASIN 不出进程）。
 - 真库端到端（真实 stdio 管道）：`diagnose_product frostline × noise` 返回 matched 766、样本 3 支持/1 反对/1 冲突、全量粗筛 286/166/239/75、盲区 75（低星 29）；`category_baseline` 返回 136,604 条评论、档位 244/566/2,468、可靠性反对 9,012 vs 支持 513——与工作台同屏数字逐位一致。
-- **已注册进 ZCode 客户端并实连成功**（2026-11-01）：用户级 `~/.zcode/cli/config.json` → `mcp.servers`；重启会话后 ZCode 作为真实 MCP 客户端自动连接，模型侧出现 `mcp__ecom-review-intelligence__*` 五个工具，并真实调用了 `diagnose_product frostline×noise`（766/3-1-1、全量 286-166-239-75、盲区 75 低星 29），数字与工作台逐位一致。注册→连接→列工具→真实调用全流程闭环，无"未验证"残留。
+- **已注册进 ZCode 客户端并实连成功**（2026-11-01）：用户级 `~/.zcode/cli/config.json` → `mcp.servers`；重启会话后 ZCode 作为真实 MCP 客户端自动连接，模型侧出现 `mcp__ecom-review-intelligence__*` 五个工具，并真实调用了 `diagnose_product frostline×noise`（766/3-1-1、全量 286-166-239-75、盲区 75 低星 29），数字与工作台逐位一致。注册→连接→列工具→真实调用全流程闭环，无"未验证"残留。实测会话截图（已裁去窗口其余部分，只留对话栏）：
+
+  ![ZCode 真实客户端调用：提问与工具搜索](assets/mcp-zcode-call.png)
+
+  ![ZCode 真实客户端调用：diagnose_product 结果](assets/mcp-zcode-result.png)
 - 桌面 exe 不含 MCP 服务器；仓库运行 `scripts/run_mcp_server.py` 即可。

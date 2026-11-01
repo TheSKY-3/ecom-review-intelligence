@@ -16,11 +16,16 @@
 下载 42 MB 的 exe 双击就能跑，不填 key 也能跑完诊断；填自己的 DeepSeek key 才启用「AI 深入分析」和对话助手。
 
 ![eval](https://img.shields.io/badge/%E8%AF%84%E6%B5%8B-30%E7%A6%BB%E7%BA%BF%E6%A1%88%E4%BE%8B%2B15live-2F6B4F)
-![tests](https://img.shields.io/badge/tests-592%20passed-2F6B4F)
+![tests](https://img.shields.io/badge/tests-604%20passed-2F6B4F)
+![ci](https://github.com/TheSKY-3/ecom-review-intelligence/actions/workflows/tests.yml/badge.svg)
 ![desktop](https://img.shields.io/badge/Windows-exe%2042%20MB-3E6B96)
 ![python](https://img.shields.io/badge/Python-3.12-3E6B96)
 ![release](https://img.shields.io/github/v/release/TheSKY-3/ecom-review-intelligence)
 ![license](https://img.shields.io/badge/license-MIT-3E6B96)
+
+先看 30 秒（四帧都是本机全量库的真实界面，目录 244 个商品）：
+
+![workbench demo](docs/assets/workbench-demo.gif)
 
 ## 目录
 
@@ -36,7 +41,7 @@
 | 一次诊断 | 服务端约 0.1 秒（演示库两次实测 123 / 142 ms），本地跑、不联网 |
 | 引用可信 | 每句引文必须是评论原文的逐字子串，一个字不对整段丢弃 |
 | 模型评测 | 15 个冻结案例 × 2 = 30 个真实调用结果：26 通过、4 次预期降级、0 越权 / 注入成功 |
-| 测试 | 592 项 pytest 全绿（本仓库实测） |
+| 测试 | 604 项 pytest 全绿（本仓库实测，CI 上同样跑一遍） |
 | 上手 | 42 MB exe 双击即跑；不填 key 也能跑完完整量化流程 |
 
 ## 系统架构
@@ -56,6 +61,7 @@
 - 🧮 **数字可复算**：所有计数由本地代码现场重算，不预打标签、不经模型
 - 🤖 **受约束 Agent**：模型只读聚合卡与最多 5 条抽样原文；引用、引文、数字、结构四道校验，不过整段丢弃
 - 📤 **一键带走**：当前运行命中的全部评论导出 CSV（16 列，含三列人工标注位），不调模型、不要密钥
+- 🔌 **MCP 工具服务器**：五个确定性证据工具按 Model Context Protocol 标准暴露，Claude Desktop 等客户端即插即用；评论原文、ASIN、路径不出本机（零新增依赖，见 [docs/mcp-server.md](docs/mcp-server.md)）
 - 🖥️ **双击即用**：42 MB Windows exe；克隆仓库也行——自带 3 商品演示库
 
 ## 界面
@@ -89,7 +95,7 @@
 
 </details>
 
-界面图用真实 Chrome 截自本机全量库（244 个 A 档商品 / 3,278 个商品 / 136,604 条评论），按面板裁切；仓库自带的演示库只有 3 个商品，跑起来时目录会短一些、口径不变。对话图保留了问题与执行轨迹、裁掉了回答区，避免把评论原文带进公开仓库。
+界面图用真实 Chrome 截自本机全量库（244 个 A 档商品 / 3,278 个商品 / 136,604 条评论），由 `scripts/capture_public_screenshots.cjs` 驱动，每张图先过路径 / ASIN / 哈希文本护栏再落盘；仓库自带的演示库只有 3 个商品，跑起来时目录会短一些、口径不变。对话图保留了问题与执行轨迹、裁掉了回答区，解读图只留归纳与编号，避免把评论原文带进公开仓库。
 
 <details>
 <summary><b>v0.3.0 改了什么</b></summary>
@@ -110,6 +116,25 @@
 | 桌面 exe | 零环境，双击即用 | 下载 [Release](https://github.com/TheSKY-3/ecom-review-intelligence/releases/latest) 里的 `EComReviewIntelligence.exe`（42 MB，内置演示子集） |
 | 容器 | 有 Docker 的人 | `docker compose up --build demo` → `http://127.0.0.1:8000` |
 | 源码 | 想读代码、跑测试 | `pip install -e ".[dev]"`，然后 `pytest` 或 `scripts/serve_demo.py --mode bundled` |
+| MCP 客户端 | 想在 Claude Desktop 里直接调用证据工具 | 配置一行命令，见下 |
+
+<details>
+<summary>接入 Claude Desktop（MCP）</summary>
+
+<br>
+
+在 `claude_desktop_config.json`（开发者 → 编辑配置）里加：
+
+~~~json
+"ecom-review-intelligence": {
+  "command": "<你的 python>",
+  "args": ["<项目根>/scripts/run_mcp_server.py", "--project-root", "<项目根>"]
+}
+~~~
+
+客户端拿到的是 `list_products` / `diagnose_product` / `compare_products` / `triage_issues` / `category_baseline` 五个工具——只有计数、商品标题与本地编号、维度名；评论文本、证据 ID、ASIN、路径不离开你的机器，这条边界有测试盯着。实现与验证记录见 [docs/mcp-server.md](docs/mcp-server.md)。
+
+</details>
 
 仓库自带 `data/public/ice_makers_public.sqlite`：3 个商品、11,958 条真实评论、10.9 MB，所以**克隆即可运行**，不需要原始数据集。
 

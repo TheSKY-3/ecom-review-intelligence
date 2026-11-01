@@ -1,0 +1,41 @@
+{
+ "aspect_totals": {
+  "leakage": {
+   "doubtful": 1
+  }
+ },
+ "cards": [
+  {
+   "aspect": "leakage",
+   "card_alias": "EV-01",
+   "evidence_count": 5,
+   "final_recorded_at": "2026-10-22T06:56:38+00:00",
+   "final_run_alias": "RUN-D34CDBD3",
+   "final_verdict": "doubtful",
+   "matched_count": 81,
+   "polarity": "opposing",
+   "product_labels": [
+    "GE Profile 颗粒冰制冰机"
+   ],
+   "strength": "STRONG",
+   "times_reviewed": 2,
+   "verdict_history": [
+    "doubtful",
+    "doubtful"
+   ],
+   "workflow": "diagnosis"
+  }
+ ],
+ "cards_total": 1,
+ "confirmation_rate": 0.0,
+ "divergence_rate": 1.0,
+ "flipped_cards": 0,
+ "generated_at": "2026-11-01T17:27:21.367919+00:00",
+ "runs_total": 2,
+ "schema_version": "reviewed-verdicts-v1",
+ "verdict_totals": {
+  "confirmed": 0,
+  "doubtful": 1,
+  "rejected": 0
+ }
+}

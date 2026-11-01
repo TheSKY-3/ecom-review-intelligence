@@ -52,7 +52,21 @@ review content. Review text, evidence IDs, ASINs, and reviewer identifiers still
 out: the chat image keeps the question and the four tool calls and crops the answer,
 and the insight image carries only the model's summary and citation labels.
 
+Re-captured on 2026-11-01 by `scripts/capture_public_screenshots.cjs` against the
+same full store (seven images plus the README slideshow GIF built from four of
+them). The script enforces the path/ASIN/hash text guard on every image before
+saving, and hides the two regions that can carry verbatim review text before
+their shot; the insight image matches the approved 2026-10-31 framing.
+
 Anything beyond this exception still needs a separate rights review.
+
+### MCP server output (2026-11-01)
+
+The MCP stdio server (`scripts/run_mcp_server.py`, see `docs/mcp-server.md`)
+exposes counts, product titles and local codes, and aspect names only — the
+same class of fields that is already publishable. Review text, evidence IDs,
+parent ASINs, and local paths never leave the process, and `tests/test_mcp_server.py`
+asserts that boundary at the tool-result level.
 
 ## Local handling
 

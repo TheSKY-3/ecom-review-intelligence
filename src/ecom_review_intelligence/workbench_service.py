@@ -6,6 +6,7 @@ import json
 import re
 import sqlite3
 from collections.abc import Callable, Sequence
+from contextlib import suppress
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
@@ -60,11 +61,18 @@ from ecom_review_intelligence.catalog import (
     catalog_tier_totals,
     load_catalog,
 )
+from ecom_review_intelligence.chat_memory import MEMORY_NOTE, ChatMemoryError, ChatMemoryStore
 from ecom_review_intelligence.engine import (
     _polarity,
     category_aspect_totals,
     query_stratified_aspect,
     verify_citation,
+)
+from ecom_review_intelligence.evidence_team import (
+    ReadingFailure,
+    ReadingTask,
+    execute_reading_team,
+    summarize_reading,
 )
 from ecom_review_intelligence.label_backfill import POLARITIES
 from ecom_review_intelligence.model_gateway import (
@@ -91,6 +99,9 @@ from ecom_review_intelligence.workbench_contracts import (
     CatalogView,
     CategoryAspectView,
     CategoryView,
+    ChatHistoryClearView,
+    ChatHistoryView,
+    ChatMemoryTurnView,
     ChatPointView,
     ChatStatsPointView,
     ChatStepView,
@@ -106,6 +117,10 @@ from ecom_review_intelligence.workbench_contracts import (
     InsightView,
     LexiconBlindSpotView,
     LexiconTotalsView,
+    ParallelInsightSummary,
+    ParallelInsightView,
+    PreferenceRequest,
+    PreferencesView,
     ProductSignalSummary,
     ProductView,
     TriageItem,
@@ -570,6 +585,7 @@ class P6BackedWorkbenchService(SyntheticWorkbenchService):
         user_insight_gateway_factory: Callable[[str, str], InsightGateway | None] | None = None,
         chat_gateway_factory: Callable[[], ChatGateway | None] | None = None,
         user_chat_gateway_factory: Callable[[str, str], ChatGateway | None] | None = None,
+        chat_memory_path: Path | None = None,
         export_dir: Path | None = None,
         project_root: Path | None = None,
         catalog_limit: int = DEFAULT_CATALOG_LIMIT,
@@ -610,6 +626,13 @@ class P6BackedWorkbenchService(SyntheticWorkbenchService):
         self._chat_gateway: ChatGateway | None = None
         self._chat_gateway_resolved = False
         self._chat_sessions: dict[str, _ChatSession] = {}
+        self._chat_memory_path = (
+            Path(chat_memory_path)
+            if chat_memory_path is not None
+            else self._checkpoint_path.parent / "p7_chat_memory.sqlite"
+        )
+        self._chat_memory: ChatMemoryStore | None = None
+        self._chat_memory_resolved = False
         self._export_dir = Path(export_dir) if export_dir is not None else Path("tmp/exports")
         self._project_root = Path(project_root) if project_root is not None else Path.cwd()
         self._evidence_index: dict[str, tuple[tuple[str, str, str], ...]] = {}
@@ -1152,6 +1175,124 @@ class P6BackedWorkbenchService(SyntheticWorkbenchService):
             self._insight_cache[cache_key] = view
         return view
 
+    def run_parallel_insights(
+        self,
+        run_token: str,
+        *,
+        user_key: str | None = None,
+        question: str | None = None,
+        model: str | None = None,
+    ) -> ParallelInsightView:
+        """Read every evidence card in parallel with the same constrained reader.
+
+        One click instead of one per card; the fan-out runs only the stateless
+        ``gateway.analyse`` call on worker threads, while the verbatim-quote
+        check, the number re-derivation, and the cache stay on this thread --
+        exactly the guarantees of :meth:`run_insight`, just concurrent.
+        Cards come back in run order regardless of completion order.
+        """
+
+        if self.mode != "local":
+            raise WorkbenchInsightUnavailable()
+        run = self.get_run(run_token)
+        if not run.evidence:
+            raise WorkbenchInsightUnavailable()
+        question = (question or "").strip() or None
+        chosen_model = (model or "").strip() or None
+        gateway = self._insight_gateway_for(user_key, chosen_model)
+
+        views: dict[str, InsightView] = {}
+        tasks: list[ReadingTask] = []
+        reviews_by_alias: dict[str, dict[str, str]] = {}
+        counts_by_alias: dict[str, int] = {}
+        for card in run.evidence:
+            alias = card.evidence_alias
+            try:
+                aspect, product_label, reviews, matched_count = self._insight_inputs(
+                    run_token, alias
+                )
+            except WorkbenchInsightUnavailable:
+                views[alias] = InsightView(
+                    run_token=run_token,
+                    card_alias=alias,
+                    status="UNAVAILABLE",
+                    reason="CARD_NOT_READABLE",
+                    review_count=0,
+                )
+                continue
+            if gateway is None:
+                views[alias] = InsightView(
+                    run_token=run_token,
+                    card_alias=alias,
+                    status="UNAVAILABLE",
+                    reason="MODEL_NOT_CONFIGURED",
+                    review_count=len(reviews),
+                )
+                continue
+            if not reviews:
+                views[alias] = InsightView(
+                    run_token=run_token,
+                    card_alias=alias,
+                    status="UNAVAILABLE",
+                    reason="NO_REVIEW_EVIDENCE",
+                    review_count=0,
+                )
+                continue
+            reviews_by_alias[alias] = dict(reviews)
+            counts_by_alias[alias] = len(reviews)
+            tasks.append(
+                ReadingTask(
+                    card_alias=alias,
+                    payload=build_payload(
+                        aspect_label=_ASPECT_WORDING[aspect][0],
+                        product_label=product_label,
+                        matched_count=matched_count,
+                        reviews=reviews,
+                        question=question,
+                    ),
+                )
+            )
+
+        def _reader(task: ReadingTask) -> object:
+            try:
+                return gateway.analyse(task.payload)
+            except GatewayError as error:
+                # Keep the stable error code the single-card path reports.
+                return ReadingFailure(error.error_code)
+
+        outcomes = execute_reading_team(tasks, _reader)
+        for task in tasks:
+            outcome = outcomes[task.card_alias]
+            if isinstance(outcome, ReadingFailure):
+                view = InsightView(
+                    run_token=run_token,
+                    card_alias=task.card_alias,
+                    status="UNAVAILABLE",
+                    reason=outcome.reason,
+                    review_count=counts_by_alias[task.card_alias],
+                    model_calls=1,
+                )
+            else:
+                check = validate_draft(outcome, reviews_by_alias[task.card_alias])
+                view = self._insight_view(
+                    run_token, task.card_alias, outcome, check, counts_by_alias[task.card_alias]
+                )
+            if view.status == "READY":
+                self._insight_cache[(run_token, task.card_alias, question, chosen_model or "")] = view
+            views[task.card_alias] = view
+
+        ordered = tuple(views[card.evidence_alias] for card in run.evidence)
+        return ParallelInsightView(
+            run_token=run_token,
+            cards=ordered,
+            summary=ParallelInsightSummary(
+                **summarize_reading(
+                    {card.evidence_alias: views[card.evidence_alias].status for card in run.evidence},
+                    {card.evidence_alias: views[card.evidence_alias].model_calls for card in run.evidence},
+                )
+            ),
+        )
+
     def _insight_view(
         self,
         run_token: str,
@@ -1249,8 +1390,33 @@ class P6BackedWorkbenchService(SyntheticWorkbenchService):
             cards=cards,
             products=products,
         )
+        memory = self._chat_memory_or_none()
+        if memory is not None:
+            # Restore what survived the restart: model-side history plus the
+            # turn budget. Stored summaries carry no review text.
+            try:
+                restored = memory.load_history(run_token)
+            except Exception:  # noqa: BLE001 - a broken memory must not hide the chat
+                restored = []
+            for row in restored:
+                session.history.append({"role": "user", "content": str(row["user_message"])})
+                session.history.append(
+                    {"role": "assistant", "content": str(row["assistant_summary"])}
+                )
+            session.turns = len(restored)
         self._chat_sessions[run_token] = session
         return session
+
+    def _chat_memory_or_none(self) -> ChatMemoryStore | None:
+        """Resolve the memory store once; an unusable path disables memory only."""
+
+        if not self._chat_memory_resolved:
+            try:
+                self._chat_memory = ChatMemoryStore(self._chat_memory_path)
+            except Exception:  # noqa: BLE001 - memory is optional, chat is not
+                self._chat_memory = None
+            self._chat_memory_resolved = True
+        return self._chat_memory
 
     def _chat_gateway_or_none(self) -> ChatGateway | None:
         if not self._chat_gateway_resolved:
@@ -1347,10 +1513,9 @@ class P6BackedWorkbenchService(SyntheticWorkbenchService):
             )
         session.turns += 1
         session.history.append({"role": "user", "content": message})
-        session.history.append(
-            {"role": "assistant", "content": chat_answer_summary(outcome.draft)}
-        )
-        return ChatTurnView(
+        summary_text = chat_answer_summary(outcome.draft)
+        session.history.append({"role": "assistant", "content": summary_text})
+        view = ChatTurnView(
             run_token=session.run_token,
             status="READY",
             supported=sanitize_public_text(outcome.draft.supported),
@@ -1379,6 +1544,79 @@ class P6BackedWorkbenchService(SyntheticWorkbenchService):
             created_run_token=created_token,
             **self._export_view(session),
         )
+        memory = self._chat_memory_or_none()
+        if memory is not None:
+            # Memory must never break the chat path; a failed write simply
+            # means this turn will not be restorable later.
+            with suppress(Exception):
+                memory.append_turn(
+                    session.run_token,
+                    user_message=message,
+                    assistant_summary=summary_text,
+                    turn=view.model_dump(mode="json"),
+                )
+        return view
+
+    def chat_history(self, run_token: str) -> ChatHistoryView:
+        """Restored conversation for one run; stored turns carry no quotes."""
+
+        if self.mode != "local":
+            raise WorkbenchChatUnavailable()
+        memory = self._chat_memory_or_none()
+        if memory is None:
+            raise WorkbenchChatUnavailable()
+        try:
+            rows = memory.load_history(run_token)
+        except Exception as error:
+            raise WorkbenchChatUnavailable() from error
+        return ChatHistoryView(
+            run_token=run_token,
+            memory_note=MEMORY_NOTE,
+            turns=tuple(
+                ChatMemoryTurnView(
+                    user_message=str(row["user_message"]),
+                    assistant_summary=str(row["assistant_summary"]),
+                    turn=ChatTurnView.model_validate(row["turn"]),
+                    created_at=str(row["created_at"]),
+                )
+                for row in rows
+            ),
+        )
+
+    def clear_chat_history(self, run_token: str) -> ChatHistoryClearView:
+        """Delete one run's stored conversation; the live session is untouched."""
+
+        if self.mode != "local":
+            raise WorkbenchChatUnavailable()
+        memory = self._chat_memory_or_none()
+        if memory is None:
+            raise WorkbenchChatUnavailable()
+        cleared = memory.clear_history(run_token)
+        return ChatHistoryClearView(run_token=run_token, cleared=cleared)
+
+    def preferences(self) -> PreferencesView:
+        """Stored non-secret operator preferences."""
+
+        if self.mode != "local":
+            raise WorkbenchChatUnavailable()
+        memory = self._chat_memory_or_none()
+        if memory is None:
+            raise WorkbenchChatUnavailable()
+        return PreferencesView(preferences=memory.preferences())
+
+    def set_preference(self, request: PreferenceRequest) -> PreferencesView:
+        """Upsert one preference; secret-like keys are refused by the store."""
+
+        if self.mode != "local":
+            raise WorkbenchChatUnavailable()
+        memory = self._chat_memory_or_none()
+        if memory is None:
+            raise WorkbenchChatUnavailable()
+        try:
+            memory.set_preference(request.key, request.value)
+        except ChatMemoryError as error:
+            raise WorkbenchInputError("The preference key or value is not usable.") from error
+        return PreferencesView(preferences=memory.preferences())
 
     @staticmethod
     def _chat_step_views(steps: Sequence[ChatToolStep]) -> tuple[ChatStepView, ...]:

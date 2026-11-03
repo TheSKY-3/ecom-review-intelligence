@@ -1,0 +1,59 @@
+{
+ "schema_version": "agent-judge-eval-v1",
+ "generated_at": "2026-11-03T16:47:20.251634+00:00",
+ "dataset_snapshot_id": "44eface81cccdceb36c3fd61f93736267e63b84ba63902fac026659540518846",
+ "contract_sha256": "b93053ce55ab7d47e865de53fe02cc076f8a1eeaa1f19487ec3c41a5f6f647fa",
+ "mode": "live",
+ "model": "deepseek-v4-flash",
+ "cases_collected": 10,
+ "generation_model_calls": 19,
+ "judge_model_calls": 9,
+ "judge_tokens": {
+  "input": 12501,
+  "output": 1144
+ },
+ "verdict_counts": {
+  "pass": 6,
+  "warn": 2,
+  "fail": 0,
+  "error": 1,
+  "skipped": 1
+ },
+ "rates": {
+  "judged": 8,
+  "pass_rate": 0.75,
+  "fail_rate": 0.0,
+  "error_rate": 0.1111
+ },
+ "issue_code_counts": {
+  "CONTRADICTS_STATS": 0,
+  "FABRICATED_CLAIM": 0,
+  "MISSING_DISCIPLINE_NOTE": 1,
+  "OVERSTATES_SAMPLE": 1,
+  "UNSUPPORTED_GENERALIZATION": 0
+ },
+ "per_workflow": {
+  "insight": {
+   "pass": 3,
+   "warn": 1,
+   "fail": 0,
+   "error": 1,
+   "skipped": 0
+  },
+  "chat": {
+   "pass": 3,
+   "warn": 1,
+   "fail": 0,
+   "error": 0,
+   "skipped": 1
+  }
+ },
+ "limitations": [
+  "The judge is the same config-pinned model as the agent: it grades semantic fidelity against the run's own statistics, not human-adjudicated ground truth.",
+  "Judge verdicts come from one forced tool-call per answer with thinking disabled and default sampling; verdict stability across runs was not measured (one missing-rationale judge error appeared in 9 final calls and is recorded fail-closed).",
+  "Answers were collected from the bundled local evidence store; the judge sees only the answer digest plus that run's counts, never the review corpus.",
+  "Two earlier iterations produced false fails because the judge payload lacked the per-product and lexicon screen counts the chat legitimately cites; the final payload mirrors the chat's stat sources exactly.",
+  "A judge error is counted as an error (fail-closed), not silently dropped.",
+  "Engineering exploration; not a phase gate and not a business-impact claim."
+ ]
+}

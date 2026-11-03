@@ -16,7 +16,7 @@
 下载 42 MB 的 exe 双击就能跑，不填 key 也能跑完诊断；填自己的 DeepSeek key 才启用「AI 深入分析」和对话助手。
 
 ![eval](https://img.shields.io/badge/%E8%AF%84%E6%B5%8B-30%E7%A6%BB%E7%BA%BF%E6%A1%88%E4%BE%8B%2B15live-2F6B4F)
-![tests](https://img.shields.io/badge/tests-604%20passed-2F6B4F)
+![tests](https://img.shields.io/badge/tests-658%20passed-2F6B4F)
 ![ci](https://github.com/TheSKY-3/ecom-review-intelligence/actions/workflows/tests.yml/badge.svg)
 ![desktop](https://img.shields.io/badge/Windows-exe%2042%20MB-3E6B96)
 ![python](https://img.shields.io/badge/Python-3.12-3E6B96)
@@ -41,7 +41,7 @@
 | 一次诊断 | 服务端约 0.1 秒（演示库两次实测 123 / 142 ms），本地跑、不联网 |
 | 引用可信 | 每句引文必须是评论原文的逐字子串，一个字不对整段丢弃 |
 | 模型评测 | 15 个冻结案例 × 2 = 30 个真实调用结果：26 通过、4 次预期降级、0 越权 / 注入成功 |
-| 测试 | 604 项 pytest 全绿（本仓库实测，CI 上同样跑一遍） |
+| 测试 | 658 项 pytest 全绿（本仓库实测，CI 上同样跑一遍） |
 | 上手 | 42 MB exe 双击即跑；不填 key 也能跑完完整量化流程 |
 
 ## 系统架构
@@ -60,6 +60,9 @@
 - 🔍 **逐字可溯源**：每条结论抽 5 条样本，可点开原文逐字核对
 - 🧮 **数字可复算**：所有计数由本地代码现场重算，不预打标签、不经模型
 - 🤖 **受约束 Agent**：模型只读聚合卡与最多 5 条抽样原文；引用、引文、数字、结构四道校验，不过整段丢弃
+- ⚡ **并行读卡**：对比 / 分诊一次点击并行读取全部证据卡，每张卡走同一条约束管线，结果按卡序确定性归位、单卡失败不连坐
+- 🧠 **会话记忆**：聊天历史落本机 SQLite（逐字引用不落盘），页面刷新自动恢复对话与模型偏好；密钥永不落盘
+- ⚖️ **评测裁判**：真实回答逐条交给受约束模型判「语义保真度」——有没有把小样本说成普遍结论、有没有跟自己的统计口径矛盾（见 [评测裁判报告](docs/reports/agent-judge-evaluation-2026-11.md)）
 - 📤 **一键带走**：当前运行命中的全部评论导出 CSV（16 列，含三列人工标注位），不调模型、不要密钥
 - 🔌 **MCP 工具服务器**：五个确定性证据工具按 Model Context Protocol 标准暴露，Claude Desktop 等客户端即插即用；评论原文、ASIN、路径不出本机（零新增依赖，见 [docs/mcp-server.md](docs/mcp-server.md)）
 - 🖥️ **双击即用**：42 MB Windows exe；克隆仓库也行——自带 3 商品演示库
@@ -78,6 +81,14 @@
 
 ![insight output](docs/assets/p7-workbench-insight.png)
 
+对比 / 分诊运行里，一次「并行读卡」就把全部证据卡并发读完（每张卡仍是同一条约束管线；实测两卡 2/2 就绪、模型调用 2 次，结果按卡序归位）：
+
+![parallel card reading](docs/assets/p7-workbench-parallel-team.png)
+
+聊天历史落在本机 SQLite（逐字引用不落盘），页面刷新后自动恢复对话和模型偏好，横幅写明边界；右边的「清除」按钮随时可删：
+
+![chat memory restore](docs/assets/p7-workbench-chat-memory.png)
+
 <details>
 <summary>更多界面：模型设置 / 导出 CSV / 移动端</summary>
 
@@ -95,7 +106,17 @@
 
 </details>
 
-界面图用真实 Chrome 截自本机全量库（244 个 A 档商品 / 3,278 个商品 / 136,604 条评论），由 `scripts/capture_public_screenshots.cjs` 驱动，每张图先过路径 / ASIN / 哈希文本护栏再落盘；仓库自带的演示库只有 3 个商品，跑起来时目录会短一些、口径不变。对话图保留了问题与执行轨迹、裁掉了回答区，解读图只留归纳与编号，避免把评论原文带进公开仓库。
+界面图用真实 Chrome 截自本机全量库（244 个 A 档商品 / 3,278 个商品 / 136,604 条评论），由 `scripts/capture_public_screenshots.cjs` 与 `scripts/capture_feature_screenshots.cjs` 驱动，每张图先过路径 / ASIN / 哈希文本护栏再落盘；仓库自带的演示库只有 3 个商品，跑起来时目录会短一些、口径不变。对话图保留了问题与执行轨迹、裁掉了回答区，解读图只留归纳与编号，避免把评论原文带进公开仓库。
+
+<details>
+<summary><b>v0.4.0 改了什么</b></summary>
+
+- **并行读卡**：对比 / 分诊运行新增「并行读卡」一次点击（`POST /api/v1/parallel-insights`）——每张证据卡的读卡子代理并发执行，但校验、缓存、汇总全部留在主线程，结果按卡序确定性归位，单卡失败只影响自己；没有模型协商、没有模型排序（C2 实验结论不变）。
+- **会话记忆**：聊天历史与本机偏好进 `data/processed/p7_chat_memory.sqlite`（逐字引用一律剥掉再落盘，形似机密的偏好键直接拒绝）；页面刷新自动恢复对话，模型选择跟着账号走；API 密钥仍然只在浏览器、永不落盘。新端点：`GET/DELETE /api/v1/chat/{run_token}/history`、`GET/PUT /api/v1/preferences`。
+- **评测裁判**：新增 `scripts/run_judge_evaluation.py`，把真实工作台回答逐条交给受约束模型判语义保真度（封闭判定 + 5 个问题码，fail-closed）；首轮 10 采 9 判：6 pass / 2 warn / 0 fail。报告见 [docs/reports/agent-judge-evaluation-2026-11.md](docs/reports/agent-judge-evaluation-2026-11.md)，实现决策与「裁判输入必须镜像被评对象的统计来源」教训见 [docs/decisions/2026-11-04-d2-d3-constrained-team-and-chat-memory.md](docs/decisions/2026-11-04-d2-d3-constrained-team-and-chat-memory.md)。
+- 测试从 604 增到 **658 passed**（+31：裁判 9、并行读卡 12、会话记忆 10）；全部既有门（P7 本地回归、浏览器 7 闸）重跑通过。
+
+</details>
 
 <details>
 <summary><b>v0.3.0 改了什么</b></summary>
@@ -208,6 +229,7 @@
 | 引文被改写 | 每条引用逐字回原文比对，必须是该评论的子串；一个字不对整段丢弃 |
 | 数字对不上 | 每个数字回统计口径重新算；不一致只允许修一次，再失败就降级成确定性输出 |
 | 串了别的商品 | 评论按 ASIN 精确关联，跨商品不会混进来 |
+| 话说错了但格式全对 | 四道机械校验之外再加评测裁判：真实回答逐条判语义保真度（夸大样本 / 矛盾口径 / 无依据外推 / 编造 / 缺边界提示），首轮实测 9 判 0 fail |
 
 四道校验、证据合同、Verifier 这些实现细节见 [docs/engineering-readme.md](docs/engineering-readme.md)。
 
@@ -234,6 +256,7 @@
 ## 边界与已知限制
 
 - **什么时候不该用它**：要实时数据、销量 / 价格关联、缺陷率或因果结论时——词表口径的证据信号不是商业影响，这是设计边界，不是待修的缺陷。
+- **会话记忆的边界**：聊天历史存本机 SQLite 且逐字引用不落盘，页面刷新即恢复；但运行视图本身仍在进程内存——重启服务后需要重跑一次诊断（历史记录还在，等运行可跨重启恢复后即可接回）。裁判评测用的是「同一模型自评语义保真度」，不是人工标注的基准。
 - **AI 步骤的可用性**：评测里 15 次真实调用 14 次可用，唯一失败是「判为相关却没引用」，重试即通过；另有一次稳定失败（模型把编号 E1–E5 写成 R1–R5）定位后修在提示词层。AI 只是可选项，关掉不影响量化流程。
 - **演示库不是分发通道**：仓库自带 3 商品 / 11,958 条评论（10.9 MB），完整类目库约 118 MB 不在仓库里，构建步骤见「想用全量数据」；导出只针对当前运行命中的评论，不做全库批量导出。
 - **门是可复算的流程，不是可重放的语料**：工程门记录在 `artifacts/`；冻结评测案例集不随仓库发布（`artifacts/evals/` 未发布），所以任何人都能按流程复算，但没法拿同一套语料重放。

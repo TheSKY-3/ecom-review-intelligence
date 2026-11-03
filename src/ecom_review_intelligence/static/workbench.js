@@ -899,6 +899,14 @@ function saveSettings() {
   }
   writeInsightKey(clean, Boolean(settingsRemember?.checked));
   writeInsightModel(settingsModel?.value);
+  // Durable, non-secret preference: the selected model id follows the operator.
+  if (settingsModel?.value) {
+    requestJson("/api/v1/preferences", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ key: "chat_model", value: settingsModel.value }),
+    }).catch(() => { /* preference sync is best-effort */ });
+  }
   applySettingsLabel();
   if (settingsDialog?.open) settingsDialog.close();
 }
@@ -992,6 +1000,59 @@ async function loadInsight(runToken, cardAlias, container, button) {
   }
 }
 
+async function loadTeamInsight(runToken, cardTargets, button, notice) {
+  button.disabled = true;
+  button.textContent = "并行读卡中…";
+  const headers = insightRequestHeaders();
+  try {
+    const question =
+      state.runQuestionToken === runToken ? state.runQuestion.slice(0, 300) : "";
+    const payload = await requestJson("/api/v1/parallel-insights", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        run_token: runToken,
+        ...(question ? { question } : {}),
+      }),
+    });
+    payload.cards.forEach((card) => {
+      const target = cardTargets.get(card.card_alias);
+      if (!target) {
+        return;
+      }
+      target.box.replaceChildren(renderInsight(card));
+      target.box.hidden = false;
+      if (card.status === "READY") {
+        target.toggle.textContent = "AI 分析结果 ▾";
+      } else if (card.reason === "MODEL_NOT_CONFIGURED" && !state.insightAvailable) {
+        writeInsightKey("");
+        target.toggle.textContent = "AI 深入分析 ▸";
+        target.toggle.disabled = false;
+      } else {
+        target.toggle.textContent = "再试一次 ▸";
+        target.toggle.disabled = false;
+      }
+    });
+    const summary = payload.summary;
+    notice.replaceChildren(
+      textElement(
+        "p",
+        "insight-footnote",
+        `本组并行读取: ${summary.ready}/${summary.total} 张就绪` +
+          `（校验未过 ${summary.validation_failed} · 不可用 ${summary.unavailable}）` +
+          ` · 模型调用 ${summary.model_calls} 次 · 结果按卡片顺序就位`,
+      ),
+    );
+    notice.hidden = false;
+    button.textContent = `并行读卡 ${summary.ready}/${summary.total} ▾`;
+  } catch (error) {
+    notice.replaceChildren(textElement("p", "insight-degraded", error.message));
+    notice.hidden = false;
+    button.textContent = "并行读卡 ▸";
+  }
+  button.disabled = false;
+}
+
 const reviewMarks = [
   ["confirmed", "review-confirmed", "确认"],
   ["doubtful", "review-doubtful", "存疑"],
@@ -1061,6 +1122,7 @@ function renderEvidence(evidence) {
   const list = document.querySelector("#evidence-list");
   list.replaceChildren();
   document.querySelector("#review-progress").hidden = true;
+  const cardTargets = new Map();
   evidence.forEach((item) => {
     const card = document.createElement("article");
     card.className = "evidence-item";
@@ -1163,6 +1225,7 @@ function renderEvidence(evidence) {
           );
         });
         card.append(insightToggle, keyPanel, insightBox);
+        cardTargets.set(item.evidence_alias, { box: insightBox, toggle: insightToggle });
       } else {
         const unavailable = textElement(
           "button",
@@ -1176,6 +1239,35 @@ function renderEvidence(evidence) {
     }
     list.append(card);
   });
+  const localMode = document.querySelector("#workbench-mode").textContent === "LOCAL";
+  if (evidence.length > 1 && state.runToken && localMode && cardTargets.size > 1 &&
+      (state.insightAvailable || state.insightByo)) {
+    const teamWrap = document.createElement("div");
+    teamWrap.className = "evidence-team";
+    const teamToggle = textElement(
+      "button",
+      "detail-toggle insight-toggle",
+      `并行读卡（${cardTargets.size} 张）▸`,
+    );
+    teamToggle.type = "button";
+    const teamNotice = document.createElement("div");
+    teamNotice.className = "insight-output";
+    teamNotice.hidden = true;
+    const teamKeyPanel = document.createElement("div");
+    teamKeyPanel.className = "insight-key";
+    teamKeyPanel.hidden = true;
+    teamToggle.addEventListener("click", () => {
+      if (state.insightAvailable || readInsightKey()) {
+        loadTeamInsight(state.runToken, cardTargets, teamToggle, teamNotice);
+        return;
+      }
+      openInsightKeyPanel(teamKeyPanel, () =>
+        loadTeamInsight(state.runToken, cardTargets, teamToggle, teamNotice),
+      );
+    });
+    teamWrap.append(teamToggle, teamKeyPanel, teamNotice);
+    list.prepend(teamWrap);
+  }
   updateReviewProgress();
 }
 
@@ -1248,6 +1340,7 @@ function renderClarification(payload) {
 
 function renderResult(payload, options = {}) {
   state.runToken = payload.run_token;
+  try { sessionStorage.setItem("wb-run-token", payload.run_token); } catch (error) { /* storage unavailable */ }
   (payload.products || []).forEach((product) => { state.productLabels[product.code] = product.label; });
   document.querySelector("#run-alias").textContent = payload.run_alias;
   document.querySelector("#result-title").textContent = payload.title;
@@ -1524,7 +1617,9 @@ function renderChatAnswer(payload) {
     const li = document.createElement("li");
     li.textContent = item.text;
     if (item.citation) {
-      li.append(textElement("span", "qa-cite", `〔${item.citation}:${item.quote}〕`));
+      // Restored history carries no verbatim quotes; cite the card only.
+      const label = item.quote ? `${item.citation}:${item.quote}` : item.citation;
+      li.append(textElement("span", "qa-cite", `〔${label}〕`));
     }
     points.append(li);
   });
@@ -1605,6 +1700,69 @@ async function qaAsk(message) {
   }
 }
 
+async function qaRestoreHistory(runToken) {
+  try {
+    const payload = await requestJson(`/api/v1/chat/${runToken}/history`);
+    if (!payload.turns || !payload.turns.length) return;
+    qaMessage("qa-system", `已恢复 ${payload.turns.length} 条历史对话（${payload.memory_note}）`);
+    payload.turns.forEach((row) => {
+      qaMessage("chat-user", row.user_message);
+      const answer = document.createElement("div");
+      answer.className = "chat-answer";
+      answer.append(renderChatAnswer(row.turn));
+      chatScroll.append(answer);
+    });
+    const clear = textElement("button", "detail-toggle", "清除这台运行的历史记录");
+    clear.type = "button";
+    clear.addEventListener("click", async () => {
+      try {
+        const result = await requestJson(`/api/v1/chat/${runToken}/history`, { method: "DELETE" });
+        qaMessage("qa-system", `已清除历史记录（${result.cleared} 条）。`);
+        clear.remove();
+      } catch (error) {
+        qaMessage("qa-system", `清除失败: ${error.message}`);
+      }
+    });
+    chatScroll.append(clear);
+    chatScroll.scrollTop = chatScroll.scrollHeight;
+  } catch (error) {
+    /* memory is optional; a missing history just means nothing to restore */
+  }
+}
+
+async function restoreLastRun() {
+  let saved = "";
+  try {
+    saved = String(sessionStorage.getItem("wb-run-token") || "");
+  } catch (error) {
+    return;
+  }
+  if (!saved) return;
+  try {
+    const payload = await requestJson(`/api/v1/runs/${saved}`);
+    renderResult(payload);
+    qaRestoreHistory(saved);
+  } catch (error) {
+    // The run no longer exists (for example after a service restart): start fresh.
+    try { sessionStorage.removeItem("wb-run-token"); } catch (ignored) { /* ignore */ }
+  }
+}
+
+async function applyStoredPreference() {
+  try {
+    const payload = await requestJson("/api/v1/preferences");
+    const model = String((payload.preferences || {}).chat_model || "");
+    if (!model || readInsightModel()) return; // the browser's own choice wins
+    const select = document.querySelector("#settings-model");
+    if (select && [...select.options].some((option) => option.value === model)) {
+      select.value = model;
+      if (typeof applySettingsLabel === "function") applySettingsLabel();
+    }
+  } catch (error) {
+    /* preferences are optional */
+  }
+}
+
 if (qaForm) {
   qaForm.addEventListener("submit", (event) => {
     event.preventDefault();
@@ -1639,3 +1797,5 @@ if (exportButton) {
 setupSignalInfo();
 initCatalog();
 initCategory();
+restoreLastRun();
+applyStoredPreference();

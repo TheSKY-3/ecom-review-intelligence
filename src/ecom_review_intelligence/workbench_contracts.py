@@ -250,6 +250,46 @@ class ChatTurnView(_PublicModel):
     export_rows: int = Field(default=0, ge=0)
 
 
+class ChatMemoryTurnView(_PublicModel):
+    """One restored chat turn; the embedded view carries no verbatim quotes."""
+
+    user_message: str
+    assistant_summary: str
+    turn: ChatTurnView
+    created_at: str = Field(min_length=10, max_length=40)
+
+
+class ChatHistoryView(_PublicModel):
+    """Durable chat history for one run, oldest first (D3)."""
+
+    schema_version: Literal["p7-chat-history-v1"] = "p7-chat-history-v1"
+    run_token: str
+    memory_note: str
+    turns: tuple[ChatMemoryTurnView, ...] = ()
+
+
+class ChatHistoryClearView(_PublicModel):
+    """Result of clearing one run's stored chat history."""
+
+    schema_version: Literal["p7-chat-history-clear-v1"] = "p7-chat-history-clear-v1"
+    run_token: str
+    cleared: int = Field(ge=0)
+
+
+class PreferencesView(_PublicModel):
+    """Small non-secret operator preferences (for example the model choice)."""
+
+    schema_version: Literal["p7-preferences-v1"] = "p7-preferences-v1"
+    preferences: dict[str, str] = Field(default_factory=dict)
+
+
+class PreferenceRequest(_PublicModel):
+    """One preference upsert; secret-like keys are refused by the store."""
+
+    key: str = Field(min_length=1, max_length=64)
+    value: str = Field(min_length=1, max_length=200)
+
+
 Verdict = Literal["confirmed", "doubtful", "rejected"]
 
 
@@ -311,6 +351,36 @@ class InsightView(_PublicModel):
     not_supported: str = ""
     review_count: int = Field(default=0, ge=0)
     model_calls: int = Field(default=0, ge=0)
+
+
+class ParallelInsightRequest(_PublicModel):
+    """One click of the parallel card-reader team; no review text enters."""
+
+    run_token: str = Field(min_length=1, max_length=64)
+    question: str | None = Field(default=None, max_length=300)
+
+
+class ParallelInsightSummary(_PublicModel):
+    """Deterministic rollup of one team reading; no per-card verdicts here."""
+
+    total: int = Field(ge=0)
+    ready: int = Field(ge=0)
+    validation_failed: int = Field(ge=0)
+    unavailable: int = Field(ge=0)
+    model_calls: int = Field(ge=0)
+
+
+class ParallelInsightView(_PublicModel):
+    """Public result of one parallel card-reader team run (D2).
+
+    Cards keep run order (E1…E5) and every entry is a standard InsightView, so
+    the existing per-card rendering and safety scan apply unchanged.
+    """
+
+    schema_version: Literal["p7-parallel-insight-v1"] = "p7-parallel-insight-v1"
+    run_token: str
+    cards: tuple[InsightView, ...] = ()
+    summary: ParallelInsightSummary
 
 
 class WorkbenchRun(_PublicModel):

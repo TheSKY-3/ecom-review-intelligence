@@ -1,9 +1,9 @@
 {
   "schema_version": "p7-browser-validation-v1",
   "status": "PASSED",
-  "observed_at": "2026-10-31T11:41:47.946Z",
-  "git_revision": "457dea7405a529b4d7e2f9f4135883b93269fbf8",
-  "source_sha256": "06b5e388249df4a6f45e9a1ce5cd4cb38f0abf2eb8e58aa4ece429dadb433197",
+  "observed_at": "2026-11-03T17:37:50.166Z",
+  "git_revision": "ea7e1a10cd16955544cb41f7f25f58f5447b3f92",
+  "source_sha256": "a5c1d21de5bb81fe38ee2d811c756a63c4c35d81a200e1fc89e9fa7f4735ab7c",
   "source_dirty": false,
   "source_paths": [
     "pyproject.toml",
@@ -16,7 +16,9 @@
     "src/ecom_review_intelligence/agent_policy.py",
     "src/ecom_review_intelligence/agent_tools.py",
     "src/ecom_review_intelligence/catalog.py",
+    "src/ecom_review_intelligence/chat_memory.py",
     "src/ecom_review_intelligence/engine.py",
+    "src/ecom_review_intelligence/evidence_team.py",
     "src/ecom_review_intelligence/model_gateway.py",
     "src/ecom_review_intelligence/workbench_cli.py",
     "src/ecom_review_intelligence/workbench_contracts.py",
@@ -28,6 +30,9 @@
     "src/ecom_review_intelligence/static/workbench.css",
     "src/ecom_review_intelligence/static/workbench.js",
     "src/ecom_review_intelligence/static/workbench-theme.js",
+    "tests/test_chat_memory.py",
+    "tests/test_evidence_team.py",
+    "tests/test_parallel_insights.py",
     "tests/test_workbench_cli.py",
     "tests/test_workbench_local.py",
     "tests/test_workbench_web.py"
@@ -49,41 +54,41 @@
   "screenshots": [
     {
       "path": "docs/assets/p7-workbench-desktop.png",
-      "sha256": "b20bd3347db150f16a44d34be4f335c710e6d8aff123e62c5ffdf523f3c36781"
+      "sha256": "1d58ebcdfaeb7d331ed73f8c44e244034cd667ed96d1ae54963a5ca80df98420"
     },
     {
       "path": "docs/assets/p7-workbench-mobile.png",
-      "sha256": "af45ee51dee8ae168100e44de5534071d66a61be012fa4d24f82d77f737a5861"
+      "sha256": "a42874f55d5f43c65d211416284d38e19f9fb46c3e8e425caf6e87511e59a619"
     }
   ],
   "observations": [
     {
       "task": "SKU diagnosis",
       "workflow": "diagnosis",
-      "completion_ms": 48,
-      "first_evidence_ms": 48,
+      "completion_ms": 524,
+      "first_evidence_ms": 524,
       "status": "VERIFIED_RESULT",
-      "evidence_count": 1,
+      "evidence_count": 5,
       "adopted": "not_assessed",
       "failure_reason": null
     },
     {
       "task": "Competitive evidence comparison",
       "workflow": "comparison",
-      "completion_ms": 26,
-      "first_evidence_ms": 26,
+      "completion_ms": 596,
+      "first_evidence_ms": 596,
       "status": "VERIFIED_RESULT",
-      "evidence_count": 2,
+      "evidence_count": 10,
       "adopted": "not_assessed",
       "failure_reason": null
     },
     {
       "task": "Operations issue triage",
       "workflow": "triage",
-      "completion_ms": 44,
-      "first_evidence_ms": 44,
+      "completion_ms": 527,
+      "first_evidence_ms": 527,
       "status": "VERIFIED_RESULT",
-      "evidence_count": 2,
+      "evidence_count": 10,
       "adopted": "not_assessed",
       "failure_reason": null
     }

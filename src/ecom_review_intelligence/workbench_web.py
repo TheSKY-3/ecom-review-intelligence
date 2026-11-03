@@ -20,6 +20,8 @@ from ecom_review_intelligence.model_gateway import normalize_request_key, normal
 from ecom_review_intelligence.workbench_contracts import (
     CatalogView,
     CategoryView,
+    ChatHistoryClearView,
+    ChatHistoryView,
     ChatRequest,
     ChatTurnView,
     EvidenceDetail,
@@ -27,6 +29,10 @@ from ecom_review_intelligence.workbench_contracts import (
     ExportView,
     InsightRequest,
     InsightView,
+    ParallelInsightRequest,
+    ParallelInsightView,
+    PreferenceRequest,
+    PreferencesView,
     VerdictList,
     VerdictRecord,
     VerdictRequest,
@@ -449,6 +455,45 @@ def create_workbench_app(
         assert_public_workbench_safe(view.model_dump(mode="json"))
         return view
 
+    @app.post("/api/v1/parallel-insights", response_model=ParallelInsightView)
+    def create_parallel_insights(
+        request: ParallelInsightRequest, http_request: Request
+    ) -> ParallelInsightView:
+        """One team click: every evidence card read in parallel, same constraints.
+
+        The rate limiter counts this as one hit although it may spend up to
+        five model calls; the cap is the five cards a run can hold, and the
+        limit exists to bound a public demo, not to price the team.
+        """
+
+        if not hasattr(backend, "run_parallel_insights"):
+            raise WorkbenchInsightUnavailable()
+        server_key = bool(getattr(backend, "insight_available", lambda: False)())
+        byo = bool(getattr(backend, "insight_byo_available", lambda: False)())
+        try:
+            user_key = normalize_request_key(http_request.headers.get(INSIGHT_KEY_HEADER))
+        except ValueError as error:
+            raise WorkbenchInputError("The supplied API key is not usable.") from error
+        model = _request_model(http_request, backend)
+        if not server_key and user_key is None and not byo:
+            raise WorkbenchInsightUnavailable()
+        client = http_request.client.host if http_request.client else "unknown"
+        if not limiter.allow(client):
+            return JSONResponse(
+                status_code=429,
+                content={
+                    "error": {
+                        "code": "RATE_LIMITED",
+                        "message": "Too many analysis requests; try again later.",
+                    }
+                },
+            )
+        view = backend.run_parallel_insights(
+            request.run_token, user_key=user_key, question=request.question, model=model
+        )
+        assert_public_workbench_safe(view.model_dump(mode="json"))
+        return view
+
     @app.post("/api/v1/chat", response_model=ChatTurnView)
     def create_chat_turn(request: ChatRequest, http_request: Request) -> ChatTurnView:
         if not hasattr(backend, "send_chat"):
@@ -476,6 +521,46 @@ def create_workbench_app(
         view = backend.send_chat(
             request.run_token, request.message, user_key=user_key, model=model
         )
+        assert_public_workbench_safe(view.model_dump(mode="json"))
+        return view
+
+    @app.get("/api/v1/chat/{run_token}/history", response_model=ChatHistoryView)
+    def chat_history(run_token: str) -> ChatHistoryView:
+        """Restored conversation for one run; stored turns carry no review text."""
+
+        if not hasattr(backend, "chat_history"):
+            raise WorkbenchChatUnavailable()
+        view = backend.chat_history(run_token)
+        assert_public_workbench_safe(view.model_dump(mode="json"))
+        return view
+
+    @app.delete("/api/v1/chat/{run_token}/history", response_model=ChatHistoryClearView)
+    def clear_chat_history(run_token: str) -> ChatHistoryClearView:
+        """Forget one run's stored conversation; the live session is untouched."""
+
+        if not hasattr(backend, "clear_chat_history"):
+            raise WorkbenchChatUnavailable()
+        view = backend.clear_chat_history(run_token)
+        assert_public_workbench_safe(view.model_dump(mode="json"))
+        return view
+
+    @app.get("/api/v1/preferences", response_model=PreferencesView)
+    def list_preferences() -> PreferencesView:
+        """Stored non-secret operator preferences."""
+
+        if not hasattr(backend, "preferences"):
+            raise WorkbenchChatUnavailable()
+        view = backend.preferences()
+        assert_public_workbench_safe(view.model_dump(mode="json"))
+        return view
+
+    @app.put("/api/v1/preferences", response_model=PreferencesView)
+    def upsert_preference(request: PreferenceRequest) -> PreferencesView:
+        """Upsert one preference; secret-like keys are refused by the store."""
+
+        if not hasattr(backend, "set_preference"):
+            raise WorkbenchChatUnavailable()
+        view = backend.set_preference(request)
         assert_public_workbench_safe(view.model_dump(mode="json"))
         return view
 
